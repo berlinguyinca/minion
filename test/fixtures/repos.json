@@ -1,0 +1,22 @@
+{
+  "repos": [
+    {
+      "owner": "your-org",
+      "name": "your-repo",
+      "defaultBranch": "main",
+      "testCommand": "npm test"
+    },
+    {
+      "owner": "your-org",
+      "name": "another-repo",
+      "defaultBranch": "develop",
+      "testCommand": "pnpm test"
+    }
+  ],
+  "ollamaModel": "qwen2.5-coder:latest",
+  "maxIssuesPerRun": 10,
+  "quotaLimits": {
+    "claude": 100,
+    "codex": 50
+  }
+}

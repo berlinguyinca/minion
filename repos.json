@@ -1,0 +1,15 @@
+{
+  "repos": [
+    {
+      "owner": "your-org",
+      "name": "your-repo",
+      "defaultBranch": "main"
+    }
+  ],
+  "ollamaModel": "qwen2.5-coder:latest",
+  "maxIssuesPerRun": 10,
+  "quotaLimits": {
+    "claude": 100,
+    "codex": 50
+  }
+}

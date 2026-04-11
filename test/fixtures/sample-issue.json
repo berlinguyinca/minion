@@ -1,0 +1,9 @@
+{
+  "id": 1234567890,
+  "number": 42,
+  "title": "Add pagination to the user list endpoint",
+  "body": "## Problem\n\nThe `/api/users` endpoint currently returns all users without pagination, which causes performance issues at scale.\n\n## Proposed Solution\n\nAdd `page` and `per_page` query parameters with defaults of `page=1` and `per_page=20`.\n\n## Acceptance Criteria\n\n- [ ] `GET /api/users?page=1&per_page=20` returns the first 20 users\n- [ ] Response includes `X-Total-Count` header\n- [ ] Response includes `Link` header with next/prev/first/last\n- [ ] Unit tests cover edge cases (empty results, last page, invalid params)\n",
+  "url": "https://github.com/your-org/your-repo/issues/42",
+  "repoOwner": "your-org",
+  "repoName": "your-repo"
+}

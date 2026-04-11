@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+.pipeline-state.json
+*.log
+.DS_Store
