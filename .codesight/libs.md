@@ -1,0 +1,37 @@
+# Libraries
+
+- `src/ai/base-wrapper.ts`
+  - function invokeProcess: (options) => Promise<InvokeProcessResult>
+  - interface InvokeProcessOptions
+  - interface InvokeProcessResult
+- `src/ai/claude-wrapper.ts` — class ClaudeWrapper
+- `src/ai/codex-wrapper.ts` — class CodexWrapper
+- `src/ai/errors.ts`
+  - class AITimeoutError
+  - class AIBinaryNotFoundError
+  - class AIInvocationError
+- `src/ai/ollama-wrapper.ts` — class OllamaWrapper
+- `src/ai/router.ts` — class AIRouter
+- `src/config/config.ts` — function loadConfig: (configPath) => PipelineConfig
+- `src/config/state.ts` — class StateManager
+- `src/git/operations.ts`
+  - function buildBranchName: (issueNumber, title) => string
+  - function createTempDir: () => string
+  - function cleanupTempDir: (dirPath) => void
+  - class GitOperations
+- `src/github/client.ts`
+  - class GitHubClient
+  - interface CreatePRParams
+  - interface PRResult
+- `src/index.ts` — function run: (argv) => void
+- `src/pipeline/issue-processor.ts` — class IssueProcessor
+- `src/pipeline/prompts.ts`
+  - function buildSpecPrompt: (issue) => string
+  - function buildImplementationPrompt: (spec, repoName) => string
+  - function buildReviewPrompt: (diff) => string
+  - function buildFollowUpPrompt: (comments) => string
+- `src/pipeline/runner.ts` — class PipelineRunner
+- `src/pipeline/test-runner.ts`
+  - function detectTestCommand: (dir, repoConfig) => string | null
+  - function runTests: (dir, command) => TestResult
+  - interface TestResult
