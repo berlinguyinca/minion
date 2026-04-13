@@ -77,6 +77,7 @@ export interface IssueOutcome {
 export interface PipelineState {
   processedIssues: Record<string, Record<number, IssueOutcome>>; // "owner/name" -> { issueNumber: outcome }
   quota: Record<string, QuotaState>; // keyed by AIModel values (extensible)
+  starPromptSeen?: boolean;
 }
 
 export type AIModel = "claude" | "codex" | "ollama" | "map";

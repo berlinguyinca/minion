@@ -215,4 +215,15 @@ export class StateManager {
     q.used += 1
     this.save(state)
   }
+
+  hasSeenStarPrompt(): boolean {
+    const state = this.load()
+    return state.starPromptSeen ?? false
+  }
+
+  markStarPromptSeen(): void {
+    const state = this.load()
+    state.starPromptSeen = true
+    this.save(state)
+  }
 }
