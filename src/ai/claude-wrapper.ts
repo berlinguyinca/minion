@@ -1,7 +1,7 @@
 import { invokeProcess } from './base-wrapper.js'
 import { scanModifiedFiles } from './file-scanner.js'
 import { AIInvocationError } from './errors.js'
-import type { AIProvider, AIModel, AgentResult, StructuredResult } from '../types/index.js'
+import type { AIProvider, AIModel, AgentResult, StructuredResult, ProviderConfig } from '../types/index.js'
 
 const DEFAULT_STRUCTURED_TIMEOUT_MS = 5 * 60 * 1000   // 5 minutes
 const DEFAULT_AGENT_TIMEOUT_MS     = 20 * 60 * 1000   // 20 minutes
@@ -30,11 +30,13 @@ function parseClaudeStructured<T>(stdout: string): T {
 export class ClaudeWrapper implements AIProvider {
   readonly model: AIModel = 'claude'
   readonly handlesFullPipeline = false
+  private readonly structuredTimeoutMs: number
+  private readonly agentTimeoutMs: number
 
-  constructor(
-    private readonly structuredTimeoutMs = DEFAULT_STRUCTURED_TIMEOUT_MS,
-    private readonly agentTimeoutMs = DEFAULT_AGENT_TIMEOUT_MS
-  ) {}
+  constructor(config?: ProviderConfig) {
+    this.structuredTimeoutMs = config?.structuredTimeoutMs ?? config?.timeoutMs ?? DEFAULT_STRUCTURED_TIMEOUT_MS
+    this.agentTimeoutMs = config?.agentTimeoutMs ?? config?.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async invokeStructured<T>(prompt: string, schema: object, _modelOverride?: string): Promise<StructuredResult<T>> {

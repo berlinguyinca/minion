@@ -1,6 +1,6 @@
 import { invokeProcess } from './base-wrapper.js'
 import { AIInvocationError } from './errors.js'
-import type { AIProvider, AIModel, AgentResult, StructuredResult } from '../types/index.js'
+import type { AIProvider, AIModel, AgentResult, StructuredResult, ProviderConfig } from '../types/index.js'
 
 const DEFAULT_STRUCTURED_TIMEOUT_MS = 2 * 60 * 1000  // 2 minutes
 
@@ -24,11 +24,13 @@ function parseOllamaStructured<T>(stdout: string): T {
 export class OllamaWrapper implements AIProvider {
   readonly model: AIModel = 'ollama'
   readonly handlesFullPipeline = false
+  private readonly ollamaModel: string
+  private readonly structuredTimeoutMs: number
 
-  constructor(
-    private readonly ollamaModel: string = 'qwen2.5-coder:latest',
-    private readonly structuredTimeoutMs = DEFAULT_STRUCTURED_TIMEOUT_MS
-  ) {}
+  constructor(model?: string, config?: ProviderConfig) {
+    this.ollamaModel = model ?? config?.model ?? 'qwen2.5-coder:latest'
+    this.structuredTimeoutMs = config?.structuredTimeoutMs ?? config?.timeoutMs ?? DEFAULT_STRUCTURED_TIMEOUT_MS
+  }
 
   async invokeStructured<T>(prompt: string, _schema: object, modelOverride?: string): Promise<StructuredResult<T>> {
     const model = modelOverride ?? this.ollamaModel

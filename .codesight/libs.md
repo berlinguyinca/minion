@@ -25,7 +25,7 @@
   - class GitHubClient
   - interface CreatePRParams
   - interface PRResult
-- `src/index.ts` — function run: (argv) => void
+- `src/index.ts` — function showStarPrompt: (state) => Promise<void>, function run: (argv) => void
 - `src/pipeline/issue-processor.ts` — class IssueProcessor
 - `src/pipeline/merge-processor.ts` — class MergeProcessor
 - `src/pipeline/prompts.ts`

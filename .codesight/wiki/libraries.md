@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**18 library files** across 6 modules
+**19 library files** across 6 modules
 
 ## Ai (8 files)
 
@@ -15,11 +15,12 @@
 - `src/ai/ollama-wrapper.ts` — OllamaWrapper
 - `src/ai/router.ts` — AIRouter
 
-## Pipeline (5 files)
+## Pipeline (6 files)
 
-- `src/pipeline/prompts.ts` — buildSpecPrompt, buildImplementationPrompt, buildReviewPrompt, buildFollowUpPrompt
+- `src/pipeline/prompts.ts` — buildSpecPrompt, buildImplementationPrompt, buildReviewPrompt, buildFollowUpPrompt, buildConflictResolutionPrompt
 - `src/pipeline/test-runner.ts` — detectTestCommand, runTests, TestResult
 - `src/pipeline/issue-processor.ts` — IssueProcessor
+- `src/pipeline/merge-processor.ts` — MergeProcessor
 - `src/pipeline/runner.ts` — PipelineRunner
 - `src/pipeline/spec-cache.ts` — SpecCache
 
@@ -38,7 +39,7 @@
 
 ## Index.ts (1 files)
 
-- `src/index.ts` — run
+- `src/index.ts` — showStarPrompt, run
 
 ---
 _Back to [overview.md](./overview.md)_

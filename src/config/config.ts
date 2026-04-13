@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { parse as parseYAML } from 'yaml'
-import type { PipelineConfig, RepoConfig, PipelineTask, TaskModelConfig } from '../types/index.js'
+import type { PipelineConfig, ProviderConfig, RepoConfig, PipelineTask, TaskModelConfig } from '../types/index.js'
 
 const RepoConfigSchema = z.object({
   owner: z.string().min(1),
@@ -20,6 +20,21 @@ const TaskModelConfigSchema = z.object({
   model: z.string().optional(),
 })
 
+const AgentAdapterSchema = z.enum(['claude', 'codex', 'ollama'])
+
+const ProviderConfigSchema = z.object({
+  timeoutMs: z.number().positive().optional(),
+  structuredTimeoutMs: z.number().positive().optional(),
+  agentTimeoutMs: z.number().positive().optional(),
+  quota: z.number().int().nonnegative().optional(),
+  model: z.string().optional(),
+  agents: z.object({
+    spec: z.object({ adapter: AgentAdapterSchema }).optional(),
+    review: z.object({ adapter: AgentAdapterSchema }).optional(),
+    execute: z.object({ adapter: AgentAdapterSchema }).optional(),
+  }).optional(),
+}).strict()
+
 const RetryConfigSchema = z.object({
   maxAttempts: z.number().int().positive().default(3),
   backoffMinutes: z.number().positive().default(60),
@@ -37,6 +52,7 @@ const PipelineConfigSchema = z.object({
     .optional(),
   providerChain: z.array(AIModelSchema).optional(),
   taskModels: z.record(PipelineTaskSchema, TaskModelConfigSchema).optional(),
+  providers: z.record(z.string(), ProviderConfigSchema).optional(),
   retry: RetryConfigSchema.optional(),
   mergeCommentTrigger: z.string().default('/merge'),
   mergeMethod: z.enum(['merge', 'squash', 'rebase']).default('merge'),
@@ -77,6 +93,21 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
       taskModels[task as PipelineTask] = entry
     }
     config.taskModels = taskModels
+  }
+
+  if (parsed.providers !== undefined) {
+    const providers: Partial<Record<string, ProviderConfig>> = {}
+    for (const [name, pCfg] of Object.entries(parsed.providers)) {
+      const entry: ProviderConfig = {}
+      if (pCfg.timeoutMs !== undefined) entry.timeoutMs = pCfg.timeoutMs
+      if (pCfg.structuredTimeoutMs !== undefined) entry.structuredTimeoutMs = pCfg.structuredTimeoutMs
+      if (pCfg.agentTimeoutMs !== undefined) entry.agentTimeoutMs = pCfg.agentTimeoutMs
+      if (pCfg.quota !== undefined) entry.quota = pCfg.quota
+      if (pCfg.model !== undefined) entry.model = pCfg.model
+      if (pCfg.agents !== undefined) entry.agents = pCfg.agents
+      providers[name] = entry
+    }
+    config.providers = providers
   }
 
   if (parsed.retry !== undefined) {

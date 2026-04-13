@@ -100,10 +100,13 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
 
   // Only instantiate providers that are in the chain
   const providerFactories: Record<AIModel, () => AIProvider> = {
-    claude: () => new ClaudeWrapper(),
-    codex: () => new CodexWrapper(),
-    ollama: () => new OllamaWrapper(config.ollamaModel ?? 'qwen2.5-coder:latest'),
-    map: () => new MAPWrapper(),
+    claude: () => new ClaudeWrapper(config.providers?.['claude']),
+    codex: () => new CodexWrapper(config.providers?.['codex']),
+    ollama: () => new OllamaWrapper(
+      config.ollamaModel ?? config.providers?.['ollama']?.model ?? 'qwen2.5-coder:latest',
+      config.providers?.['ollama'],
+    ),
+    map: () => new MAPWrapper(config.providers?.['map']),
   }
 
   const providers: Partial<Record<AIModel, AIProvider>> = {}
