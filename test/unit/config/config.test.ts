@@ -18,7 +18,6 @@ describe('loadConfig', () => {
       repos: [
         { owner: 'acme', name: 'api', defaultBranch: 'main', testCommand: 'npm test' },
       ],
-      ollamaModel: 'qwen2.5-coder:latest',
       maxIssuesPerRun: 5,
     }
     writeFileSync(configPath, JSON.stringify(content))
@@ -32,7 +31,6 @@ describe('loadConfig', () => {
       defaultBranch: 'main',
       testCommand: 'npm test',
     })
-    expect(config.ollamaModel).toBe('qwen2.5-coder:latest')
     expect(config.maxIssuesPerRun).toBe(5)
   })
 
@@ -69,15 +67,6 @@ describe('loadConfig', () => {
     expect(config.repos[0]?.cloneUrl).toBe('/tmp/acme-api.git')
   })
 
-  it('defaults ollamaModel to "qwen2.5-coder:latest" when not specified', () => {
-    const configPath = makeTempPath('repos.json')
-    writeFileSync(configPath, JSON.stringify({ repos: [] }))
-
-    const config = loadConfig(configPath)
-
-    expect(config.ollamaModel).toBe('qwen2.5-coder:latest')
-  })
-
   it('defaults maxIssuesPerRun to 10 when not specified', () => {
     const configPath = makeTempPath('repos.json')
     writeFileSync(configPath, JSON.stringify({ repos: [] }))
@@ -85,6 +74,24 @@ describe('loadConfig', () => {
     const config = loadConfig(configPath)
 
     expect(config.maxIssuesPerRun).toBe(10)
+  })
+
+  it('maps mapModel when provided', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({ repos: [], mapModel: 'claude-opus-4-6' }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.mapModel).toBe('claude-opus-4-6')
+  })
+
+  it('maps mapTimeoutMs when provided', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({ repos: [], mapTimeoutMs: 60000 }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.mapTimeoutMs).toBe(60000)
   })
 
   it('throws descriptive error when config file is missing', () => {
@@ -122,38 +129,4 @@ describe('loadConfig', () => {
 
     expect(config.repos).toEqual([])
   })
-
-  it('maps quotaLimits.claude and quotaLimits.codex when provided', () => {
-    const configPath = makeTempPath('repos.json')
-    writeFileSync(
-      configPath,
-      JSON.stringify({ repos: [], quotaLimits: { claude: 200, codex: 75 } })
-    )
-
-    const config = loadConfig(configPath)
-
-    expect(config.quotaLimits?.claude).toBe(200)
-    expect(config.quotaLimits?.codex).toBe(75)
-  })
-
-  it('maps quotaLimits when only claude is provided', () => {
-    const configPath = makeTempPath('repos.json')
-    writeFileSync(configPath, JSON.stringify({ repos: [], quotaLimits: { claude: 50 } }))
-
-    const config = loadConfig(configPath)
-
-    expect(config.quotaLimits?.claude).toBe(50)
-    expect(config.quotaLimits?.codex).toBeUndefined()
-  })
-
-  it('maps quotaLimits when only codex is provided', () => {
-    const configPath = makeTempPath('repos.json')
-    writeFileSync(configPath, JSON.stringify({ repos: [], quotaLimits: { codex: 30 } }))
-
-    const config = loadConfig(configPath)
-
-    expect(config.quotaLimits?.claude).toBeUndefined()
-    expect(config.quotaLimits?.codex).toBe(30)
-  })
-
 })

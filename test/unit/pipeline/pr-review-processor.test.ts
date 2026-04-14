@@ -9,9 +9,7 @@ vi.mock('../../../src/github/client.js', () => ({
   GitHubClient: vi.fn(),
 }))
 
-vi.mock('../../../src/ai/router.js', () => ({
-  AIRouter: vi.fn(),
-}))
+// AI provider mock (MAPWrapper implements AIProvider directly)
 
 vi.mock('../../../src/git/operations.js', () => ({
   GitOperations: vi.fn(),
@@ -82,9 +80,12 @@ function makeGitHubMock() {
 
 function makeAIMock(verdict: 'merge' | 'split' = 'merge') {
   return {
-    invokeStructuredForTask: vi.fn().mockResolvedValue({
+    model: 'map' as const,
+    handlesFullPipeline: true,
+    invokeAgent: vi.fn().mockResolvedValue({
       success: true,
-      data: {
+      filesWritten: [],
+      stdout: JSON.stringify({
         verdict,
         confidence: 0.9,
         reasoning: 'test reasoning',
@@ -95,10 +96,10 @@ function makeAIMock(verdict: 'merge' | 'split' = 'merge') {
           { name: 'tests', description: 'Test files', files: ['src/file3.ts', 'src/file4.ts'] },
         ],
         reasoning_split: 'separate concerns',
-      },
-      rawOutput: '{}',
-      model: 'claude' as const,
+      }),
+      stderr: '',
     }),
+    invokeStructured: vi.fn().mockRejectedValue(new Error('not supported')),
   }
 }
 
@@ -228,24 +229,20 @@ describe('PRReviewProcessor', () => {
   it('splits when AI verdict is split and PR is large enough', async () => {
     ai = makeAIMock('split')
     // First call: verdict=split, second call: split plan
-    ai.invokeStructuredForTask
+    ai.invokeAgent
       .mockResolvedValueOnce({
-        success: true,
-        data: { verdict: 'split', confidence: 0.8, reasoning: 'mixed concerns', concerns: [] },
-        rawOutput: '{}',
-        model: 'claude' as const,
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({ verdict: 'split', confidence: 0.8, reasoning: 'mixed concerns', concerns: [] }),
       })
       .mockResolvedValueOnce({
-        success: true,
-        data: {
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({
           groups: [
             { name: 'core', description: 'Core logic', files: ['src/file0.ts', 'src/file1.ts', 'src/file2.ts'] },
             { name: 'tests', description: 'Test files', files: ['src/file3.ts', 'src/file4.ts'] },
           ],
           reasoning: 'separate concerns',
-        },
-        rawOutput: '{}',
-        model: 'claude' as const,
+        }),
       })
     github.getPRDiff.mockResolvedValue(makeLargeDiff(6))
     github.createPullRequest
@@ -263,22 +260,20 @@ describe('PRReviewProcessor', () => {
   })
 
   it('adds ai-generated and ai-split-child labels to child PRs', async () => {
-    ai.invokeStructuredForTask
+    ai.invokeAgent
       .mockResolvedValueOnce({
-        success: true,
-        data: { verdict: 'split', confidence: 0.8, reasoning: 'mixed', concerns: [] },
-        rawOutput: '{}', model: 'claude' as const,
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({ verdict: 'split', confidence: 0.8, reasoning: 'mixed', concerns: [] }),
       })
       .mockResolvedValueOnce({
-        success: true,
-        data: {
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({
           groups: [
             { name: 'a', description: 'Group A', files: ['src/file0.ts', 'src/file1.ts', 'src/file2.ts'] },
             { name: 'b', description: 'Group B', files: ['src/file3.ts', 'src/file4.ts'] },
           ],
           reasoning: 'test',
-        },
-        rawOutput: '{}', model: 'claude' as const,
+        }),
       })
     github.getPRDiff.mockResolvedValue(makeLargeDiff(6))
     github.createPullRequest
@@ -300,10 +295,11 @@ describe('PRReviewProcessor', () => {
 
   it('merges instead of splitting when PR has ai-split-child label', async () => {
     ai = makeAIMock('split')
-    ai.invokeStructuredForTask.mockResolvedValueOnce({
+    ai.invokeAgent.mockResolvedValueOnce({
       success: true,
-      data: { verdict: 'split', confidence: 0.8, reasoning: 'complex', concerns: [] },
-      rawOutput: '{}', model: 'claude' as const,
+      filesWritten: [],
+      stdout: JSON.stringify({ verdict: 'split', confidence: 0.8, reasoning: 'complex', concerns: [] }),
+      stderr: '',
     })
     const splitChildPR: PRInfo = { ...pr, labels: ['ai-generated', 'ai-split-child'] }
     processor = new PRReviewProcessor(github as never, ai as never, git as never, baseConfig)
@@ -321,10 +317,11 @@ describe('PRReviewProcessor', () => {
   // -------------------------------------------------------------------------
 
   it('merges small PRs even when AI says split (too few files)', async () => {
-    ai.invokeStructuredForTask.mockResolvedValueOnce({
+    ai.invokeAgent.mockResolvedValueOnce({
       success: true,
-      data: { verdict: 'split', confidence: 0.7, reasoning: 'small but mixed', concerns: [] },
-      rawOutput: '{}', model: 'claude' as const,
+      filesWritten: [],
+      stdout: JSON.stringify({ verdict: 'split', confidence: 0.7, reasoning: 'small but mixed', concerns: [] }),
+      stderr: '',
     })
     // Default SMALL_DIFF has only 1 file — below threshold
     processor = new PRReviewProcessor(github as never, ai as never, git as never, baseConfig)
@@ -380,16 +377,14 @@ describe('PRReviewProcessor', () => {
   // -------------------------------------------------------------------------
 
   it('returns error when split plan has fewer than 2 groups', async () => {
-    ai.invokeStructuredForTask
+    ai.invokeAgent
       .mockResolvedValueOnce({
-        success: true,
-        data: { verdict: 'split', confidence: 0.8, reasoning: 'complex', concerns: [] },
-        rawOutput: '{}', model: 'claude' as const,
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({ verdict: 'split', confidence: 0.8, reasoning: 'complex', concerns: [] }),
       })
       .mockResolvedValueOnce({
-        success: true,
-        data: { groups: [{ name: 'all', description: 'everything', files: ['a.ts'] }], reasoning: 'x' },
-        rawOutput: '{}', model: 'claude' as const,
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({ groups: [{ name: 'all', description: 'everything', files: ['a.ts'] }], reasoning: 'x' }),
       })
     github.getPRDiff.mockResolvedValue(makeLargeDiff(6))
     processor = new PRReviewProcessor(github as never, ai as never, git as never, baseConfig)
@@ -401,22 +396,20 @@ describe('PRReviewProcessor', () => {
   })
 
   it('returns error when split plan has duplicate files across groups', async () => {
-    ai.invokeStructuredForTask
+    ai.invokeAgent
       .mockResolvedValueOnce({
-        success: true,
-        data: { verdict: 'split', confidence: 0.8, reasoning: 'complex', concerns: [] },
-        rawOutput: '{}', model: 'claude' as const,
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({ verdict: 'split', confidence: 0.8, reasoning: 'complex', concerns: [] }),
       })
       .mockResolvedValueOnce({
-        success: true,
-        data: {
+        success: true, filesWritten: [], stderr: '',
+        stdout: JSON.stringify({
           groups: [
             { name: 'a', description: 'A', files: ['src/file0.ts'] },
             { name: 'b', description: 'B', files: ['src/file0.ts'] }, // duplicate!
           ],
           reasoning: 'x',
-        },
-        rawOutput: '{}', model: 'claude' as const,
+        }),
       })
     github.getPRDiff.mockResolvedValue(makeLargeDiff(6))
     processor = new PRReviewProcessor(github as never, ai as never, git as never, baseConfig)

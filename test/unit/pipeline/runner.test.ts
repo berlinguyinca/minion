@@ -29,9 +29,7 @@ vi.mock('../../../src/config/state.js', () => ({
   StateManager: vi.fn(),
 }))
 
-vi.mock('../../../src/ai/router.js', () => ({
-  AIRouter: vi.fn(),
-}))
+// AI provider mock (no router — MAPWrapper implements AIProvider directly)
 
 vi.mock('../../../src/git/index.js', () => ({
   GitOperations: vi.fn(),
@@ -49,7 +47,7 @@ import { MergeProcessor } from '../../../src/pipeline/merge-processor.js'
 import { PRReviewProcessor } from '../../../src/pipeline/pr-review-processor.js'
 import { GitHubClient } from '../../../src/github/client.js'
 import { StateManager } from '../../../src/config/state.js'
-import { AIRouter } from '../../../src/ai/router.js'
+import type { AIProvider } from '../../../src/types/index.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -115,7 +113,7 @@ describe('PipelineRunner', () => {
         testsPassed: true,
         issueNumber: 1,
         repoFullName: 'acme/api',
-        modelUsed: 'claude',
+        modelUsed: 'map',
         filesChanged: [],
       }),
     }
@@ -158,12 +156,11 @@ describe('PipelineRunner', () => {
     vi.mocked(PRReviewProcessor).mockImplementation(() => reviewProcessorMock as unknown as PRReviewProcessor)
     vi.mocked(GitHubClient).mockImplementation(() => githubMock as unknown as GitHubClient)
     vi.mocked(StateManager).mockImplementation(() => stateMock as unknown as StateManager)
-    vi.mocked(AIRouter).mockImplementation(() => aiMock as unknown as AIRouter)
 
     runner = new PipelineRunner(
       baseConfig,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
   })
@@ -175,7 +172,7 @@ describe('PipelineRunner', () => {
     const multiRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 
@@ -199,9 +196,9 @@ describe('PipelineRunner', () => {
     githubMock.fetchOpenIssues.mockResolvedValue([makeIssue(1), makeIssue(2), makeIssue(3)])
 
     processorMock.processIssue
-      .mockResolvedValueOnce({ success: true, isDraft: false, testsPassed: true, issueNumber: 1, repoFullName: 'acme/api', modelUsed: 'claude', filesChanged: [] })
+      .mockResolvedValueOnce({ success: true, isDraft: false, testsPassed: true, issueNumber: 1, repoFullName: 'acme/api', modelUsed: 'map', filesChanged: [] })
       .mockRejectedValueOnce(new Error('unexpected crash'))
-      .mockResolvedValueOnce({ success: true, isDraft: false, testsPassed: true, issueNumber: 3, repoFullName: 'acme/api', modelUsed: 'claude', filesChanged: [] })
+      .mockResolvedValueOnce({ success: true, isDraft: false, testsPassed: true, issueNumber: 3, repoFullName: 'acme/api', modelUsed: 'map', filesChanged: [] })
 
     await runner.run()
 
@@ -220,8 +217,8 @@ describe('PipelineRunner', () => {
     githubMock.fetchOpenIssues.mockResolvedValue([makeIssue(1), makeIssue(2)])
 
     processorMock.processIssue
-      .mockResolvedValueOnce({ success: true, isDraft: false, testsPassed: true, issueNumber: 1, repoFullName: 'acme/api', modelUsed: 'claude', filesChanged: [] })
-      .mockResolvedValueOnce({ success: false, isDraft: true, testsPassed: false, issueNumber: 2, repoFullName: 'acme/api', modelUsed: 'claude', filesChanged: [], error: 'failed' })
+      .mockResolvedValueOnce({ success: true, isDraft: false, testsPassed: true, issueNumber: 1, repoFullName: 'acme/api', modelUsed: 'map', filesChanged: [] })
+      .mockResolvedValueOnce({ success: false, isDraft: true, testsPassed: false, issueNumber: 2, repoFullName: 'acme/api', modelUsed: 'map', filesChanged: [], error: 'failed' })
 
     const code = await runner.run()
 
@@ -244,7 +241,7 @@ describe('PipelineRunner', () => {
     const limitedRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 
@@ -263,7 +260,7 @@ describe('PipelineRunner', () => {
     const limitedRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 
@@ -281,7 +278,7 @@ describe('PipelineRunner', () => {
     const defaultRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 
@@ -300,7 +297,7 @@ describe('PipelineRunner', () => {
     const multiRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 
@@ -334,7 +331,7 @@ describe('PipelineRunner', () => {
         testsPassed: true,
         issueNumber: 1,
         repoFullName: 'acme/api',
-        modelUsed: 'claude',
+        modelUsed: 'map',
         filesChanged: [],
       })
     })
@@ -397,7 +394,7 @@ describe('PipelineRunner', () => {
     const draftRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 
@@ -469,7 +466,7 @@ describe('PipelineRunner', () => {
     const noAutoRunner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 

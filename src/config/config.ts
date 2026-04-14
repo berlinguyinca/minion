@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { parse as parseYAML } from 'yaml'
-import type { PipelineConfig, RepoConfig, PipelineTask, TaskModelConfig } from '../types/index.js'
+import type { PipelineConfig, RepoConfig } from '../types/index.js'
 
 const RepoConfigSchema = z.object({
   owner: z.string().min(1),
@@ -11,15 +11,6 @@ const RepoConfigSchema = z.object({
   cloneUrl: z.string().optional(),
 })
 
-const AIModelSchema = z.enum(['claude', 'codex', 'ollama', 'map'])
-
-const PipelineTaskSchema = z.enum(['specGeneration', 'implementation', 'codeReview', 'conflictResolution', 'prReview'])
-
-const TaskModelConfigSchema = z.object({
-  provider: AIModelSchema,
-  model: z.string().optional(),
-})
-
 const RetryConfigSchema = z.object({
   maxAttempts: z.number().int().positive().default(3),
   backoffMinutes: z.number().positive().default(60),
@@ -27,16 +18,9 @@ const RetryConfigSchema = z.object({
 
 const PipelineConfigSchema = z.object({
   repos: z.array(RepoConfigSchema),
-  ollamaModel: z.string().default('qwen2.5-coder:latest'),
   maxIssuesPerRun: z.number().int().positive().default(10),
-  quotaLimits: z
-    .object({
-      claude: z.number().int().positive().optional(),
-      codex: z.number().int().positive().optional(),
-    })
-    .optional(),
-  providerChain: z.array(AIModelSchema).optional(),
-  taskModels: z.record(PipelineTaskSchema, TaskModelConfigSchema).optional(),
+  mapModel: z.string().optional(),
+  mapTimeoutMs: z.number().int().positive().optional(),
   retry: RetryConfigSchema.optional(),
   mergeCommentTrigger: z.string().default('/merge'),
   mergeMethod: z.enum(['merge', 'squash', 'rebase']).default('merge'),
@@ -58,29 +42,15 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
       if (r.cloneUrl !== undefined) repo.cloneUrl = r.cloneUrl
       return repo
     }),
-    ollamaModel: parsed.ollamaModel,
     maxIssuesPerRun: parsed.maxIssuesPerRun,
   }
 
-  if (parsed.quotaLimits !== undefined) {
-    const limits: NonNullable<PipelineConfig['quotaLimits']> = {}
-    if (parsed.quotaLimits.claude !== undefined) limits.claude = parsed.quotaLimits.claude
-    if (parsed.quotaLimits.codex !== undefined) limits.codex = parsed.quotaLimits.codex
-    config.quotaLimits = limits
+  if (parsed.mapModel !== undefined) {
+    config.mapModel = parsed.mapModel
   }
 
-  if (parsed.providerChain !== undefined) {
-    config.providerChain = parsed.providerChain
-  }
-
-  if (parsed.taskModels !== undefined) {
-    const taskModels: Partial<Record<PipelineTask, TaskModelConfig>> = {}
-    for (const [task, cfg] of Object.entries(parsed.taskModels)) {
-      const entry: TaskModelConfig = { provider: cfg.provider }
-      if (cfg.model !== undefined) entry.model = cfg.model
-      taskModels[task as PipelineTask] = entry
-    }
-    config.taskModels = taskModels
+  if (parsed.mapTimeoutMs !== undefined) {
+    config.mapTimeoutMs = parsed.mapTimeoutMs
   }
 
   if (parsed.retry !== undefined) {

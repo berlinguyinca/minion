@@ -31,13 +31,6 @@ export interface ProviderConfig {
   };
 }
 
-export type PipelineTask = 'specGeneration' | 'implementation' | 'codeReview' | 'conflictResolution' | 'prReview'
-
-export interface TaskModelConfig {
-  provider: AIModel
-  model?: string        // e.g., 'gemma3:latest' for Ollama
-}
-
 export interface RetryConfig {
   maxAttempts: number
   backoffMinutes: number
@@ -53,15 +46,9 @@ export interface SecurityIssue {
 
 export interface PipelineConfig {
   repos: RepoConfig[];
-  ollamaModel?: string;
   maxIssuesPerRun?: number;
-  quotaLimits?: {
-    claude?: number;
-    codex?: number;
-  };
-  providerChain?: AIModel[];
-  providers?: Partial<Record<string, ProviderConfig>>;
-  taskModels?: Partial<Record<PipelineTask, TaskModelConfig>>;
+  mapModel?: string;
+  mapTimeoutMs?: number;
   retry?: RetryConfig;
   mergeCommentTrigger?: string;
   mergeMethod?: 'merge' | 'squash' | 'rebase';
@@ -100,7 +87,7 @@ export interface PipelineState {
   starPromptSeen?: boolean;
 }
 
-export type AIModel = "claude" | "codex" | "ollama" | "map";
+export type AIModel = "map";
 
 export interface AgentResult {
   success: boolean;

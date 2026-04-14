@@ -9,9 +9,7 @@ vi.mock('../../../src/github/client.js', () => ({
   GitHubClient: vi.fn(),
 }))
 
-vi.mock('../../../src/ai/router.js', () => ({
-  AIRouter: vi.fn(),
-}))
+// AI provider mock (MAPWrapper implements AIProvider directly)
 
 vi.mock('../../../src/git/operations.js', () => ({
   GitOperations: vi.fn(),
@@ -33,9 +31,9 @@ vi.mock('../../../src/pipeline/prompts.js', () => ({
 
 import { MergeProcessor } from '../../../src/pipeline/merge-processor.js'
 import { GitHubClient } from '../../../src/github/client.js'
-import { AIRouter } from '../../../src/ai/router.js'
 import { GitOperations } from '../../../src/git/operations.js'
 import { createTempDir, cleanupTempDir } from '../../../src/git/index.js'
+import type { AIProvider } from '../../../src/types/index.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -52,12 +50,15 @@ function makeGitHubMock() {
 
 function makeAIMock() {
   return {
-    invokeStructuredForTask: vi.fn().mockResolvedValue({
+    model: 'map' as const,
+    handlesFullPipeline: true,
+    invokeAgent: vi.fn().mockResolvedValue({
       success: true,
-      data: { resolvedContent: 'resolved file content' },
-      rawOutput: '{"resolvedContent":"resolved file content"}',
-      model: 'claude' as const,
+      filesWritten: [],
+      stdout: JSON.stringify({ resolvedContent: 'resolved file content' }),
+      stderr: '',
     }),
+    invokeStructured: vi.fn().mockRejectedValue(new Error('not supported')),
   }
 }
 
@@ -119,7 +120,6 @@ describe('MergeProcessor', () => {
     git = makeGitMock()
 
     vi.mocked(GitHubClient).mockImplementation(() => github as unknown as GitHubClient)
-    vi.mocked(AIRouter).mockImplementation(() => ai as unknown as AIRouter)
     vi.mocked(GitOperations).mockImplementation(() => git as unknown as GitOperations)
 
     vi.mocked(createTempDir).mockReturnValue('/tmp/merge-test')
@@ -127,7 +127,7 @@ describe('MergeProcessor', () => {
 
     processor = new MergeProcessor(
       github as unknown as GitHubClient,
-      ai as unknown as AIRouter,
+      ai as unknown as AIProvider,
       git as unknown as GitOperations,
       baseConfig,
     )
@@ -178,7 +178,7 @@ describe('MergeProcessor', () => {
     const config: PipelineConfig = { ...baseConfig, mergeMethod: 'squash' }
     const squashProcessor = new MergeProcessor(
       github as unknown as GitHubClient,
-      ai as unknown as AIRouter,
+      ai as unknown as AIProvider,
       git as unknown as GitOperations,
       config,
     )
@@ -219,10 +219,9 @@ describe('MergeProcessor', () => {
     expect(result.merged).toBe(true)
     expect(result.conflictsResolved).toBe(1)
 
-    expect(ai.invokeStructuredForTask).toHaveBeenCalledWith(
-      'conflictResolution',
+    expect(ai.invokeAgent).toHaveBeenCalledWith(
       'resolve this conflict',
-      expect.objectContaining({ type: 'object' }),
+      '/tmp/merge-test',
     )
     expect(git.resolveConflict).toHaveBeenCalledWith(
       '/tmp/merge-test',
@@ -258,7 +257,7 @@ describe('MergeProcessor', () => {
 
     expect(result.merged).toBe(true)
     expect(result.conflictsResolved).toBe(2)
-    expect(ai.invokeStructuredForTask).toHaveBeenCalledTimes(2)
+    expect(ai.invokeAgent).toHaveBeenCalledTimes(2)
     expect(git.resolveConflict).toHaveBeenCalledTimes(2)
   })
 
@@ -268,11 +267,11 @@ describe('MergeProcessor', () => {
 
   it('AI resolution failure: aborts rebase and posts failure comment when AI returns no resolvedContent', async () => {
     git.rebase.mockResolvedValueOnce({ success: false, conflicts: [conflictFile] })
-    ai.invokeStructuredForTask.mockResolvedValueOnce({
-      success: false,
-      data: undefined,
-      rawOutput: '',
-      model: 'claude' as const,
+    ai.invokeAgent.mockResolvedValueOnce({
+      success: true,
+      filesWritten: [],
+      stdout: '',
+      stderr: '',
     })
 
     const result = await processor.processMergeRequest(repo, pr)
@@ -292,11 +291,11 @@ describe('MergeProcessor', () => {
 
   it('AI resolution failure: still calls cleanupTempDir', async () => {
     git.rebase.mockResolvedValueOnce({ success: false, conflicts: [conflictFile] })
-    ai.invokeStructuredForTask.mockResolvedValueOnce({
-      success: false,
-      data: undefined,
-      rawOutput: '',
-      model: 'claude' as const,
+    ai.invokeAgent.mockResolvedValueOnce({
+      success: true,
+      filesWritten: [],
+      stdout: '',
+      stderr: '',
     })
 
     await processor.processMergeRequest(repo, pr)
@@ -304,13 +303,13 @@ describe('MergeProcessor', () => {
     expect(cleanupTempDir).toHaveBeenCalledWith('/tmp/merge-test')
   })
 
-  it('AI resolution failure: when data exists but resolvedContent is empty string, treats as failure', async () => {
+  it('AI resolution failure: when agent returns empty resolvedContent, treats as failure', async () => {
     git.rebase.mockResolvedValueOnce({ success: false, conflicts: [conflictFile] })
-    ai.invokeStructuredForTask.mockResolvedValueOnce({
+    ai.invokeAgent.mockResolvedValueOnce({
       success: true,
-      data: { resolvedContent: '' },
-      rawOutput: '',
-      model: 'claude' as const,
+      filesWritten: [],
+      stdout: JSON.stringify({ resolvedContent: '' }),
+      stderr: '',
     })
 
     const result = await processor.processMergeRequest(repo, pr)

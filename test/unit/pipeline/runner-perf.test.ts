@@ -21,9 +21,7 @@ vi.mock('../../../src/config/state.js', () => ({
   StateManager: vi.fn(),
 }))
 
-vi.mock('../../../src/ai/router.js', () => ({
-  AIRouter: vi.fn(),
-}))
+// AI provider mock (MAPWrapper implements AIProvider directly)
 
 vi.mock('../../../src/git/index.js', () => ({
   GitOperations: vi.fn(),
@@ -37,7 +35,7 @@ import { PipelineRunner } from '../../../src/pipeline/runner.js'
 import { IssueProcessor } from '../../../src/pipeline/issue-processor.js'
 import { GitHubClient } from '../../../src/github/client.js'
 import { StateManager } from '../../../src/config/state.js'
-import { AIRouter } from '../../../src/ai/router.js'
+import type { AIProvider } from '../../../src/types/index.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -62,7 +60,7 @@ function makeSuccessResult(issueNumber: number, repoFullName: string): Processin
     success: true,
     isDraft: false,
     testsPassed: true,
-    modelUsed: 'claude',
+    modelUsed: 'map',
     filesChanged: [],
   }
 }
@@ -94,7 +92,6 @@ describe('PipelineRunner performance', () => {
     vi.mocked(IssueProcessor).mockImplementation(() => processorMock as unknown as IssueProcessor)
     vi.mocked(GitHubClient).mockImplementation(() => githubMock as unknown as GitHubClient)
     vi.mocked(StateManager).mockImplementation(() => stateMock as unknown as StateManager)
-    vi.mocked(AIRouter).mockImplementation(() => aiMock as unknown as AIRouter)
   })
 
   it('processes 10 issues in under 5 seconds with instant providers', async () => {
@@ -126,7 +123,7 @@ describe('PipelineRunner performance', () => {
     const runner = new PipelineRunner(
       config,
       githubMock as unknown as GitHubClient,
-      aiMock as unknown as AIRouter,
+      aiMock as unknown as AIProvider,
       stateMock as unknown as StateManager,
     )
 

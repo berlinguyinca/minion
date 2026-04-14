@@ -12,12 +12,17 @@ vi.mock('@octokit/rest', () => {
   const mockGetRef = vi.fn()
   const mockDeleteRef = vi.fn()
   const mockListPRs = vi.fn()
+  const mockCreateIssue = vi.fn()
+  const mockListLabelsForRepo = vi.fn()
+  const mockListForAuthenticatedUser = vi.fn()
 
   const mockOctokit = {
     issues: {
       listForRepo: mockListForRepo,
       addLabels: mockAddLabels,
       createComment: mockCreateComment,
+      create: mockCreateIssue,
+      listLabelsForRepo: mockListLabelsForRepo,
     },
     pulls: {
       create: mockCreatePR,
@@ -28,6 +33,9 @@ vi.mock('@octokit/rest', () => {
     git: {
       getRef: mockGetRef,
       deleteRef: mockDeleteRef,
+    },
+    repos: {
+      listForAuthenticatedUser: mockListForAuthenticatedUser,
     },
   }
 
@@ -48,6 +56,8 @@ function getMockOctokit() {
       listForRepo: Mock
       addLabels: Mock
       createComment: Mock
+      create: Mock
+      listLabelsForRepo: Mock
     }
     pulls: {
       create: Mock
@@ -58,6 +68,9 @@ function getMockOctokit() {
     git: {
       getRef: Mock
       deleteRef: Mock
+    }
+    repos: {
+      listForAuthenticatedUser: Mock
     }
   }
 }
@@ -701,6 +714,180 @@ describe('GitHubClient', () => {
       mocks.pulls.createReview.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }))
       const client = new GitHubClient()
       await expect(client.postReviewComments('acme', 'api', 42, [])).rejects.toThrow(/not found|no access/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // createIssue
+  // -----------------------------------------------------------------------
+  describe('createIssue', () => {
+    it('creates an issue and returns number + url', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.create.mockResolvedValueOnce({
+        data: { number: 42, html_url: 'https://github.com/acme/api/issues/42' },
+      })
+      const client = new GitHubClient()
+      const result = await client.createIssue('acme', 'api', 'Bug title', 'Bug body')
+      expect(result).toEqual({ number: 42, url: 'https://github.com/acme/api/issues/42' })
+      expect(mocks.issues.create).toHaveBeenCalledWith({
+        owner: 'acme',
+        repo: 'api',
+        title: 'Bug title',
+        body: 'Bug body',
+      })
+    })
+
+    it('passes labels when provided', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.create.mockResolvedValueOnce({
+        data: { number: 43, html_url: 'https://github.com/acme/api/issues/43' },
+      })
+      const client = new GitHubClient()
+      await client.createIssue('acme', 'api', 'Title', 'Body', ['bug', 'urgent'])
+      expect(mocks.issues.create).toHaveBeenCalledWith({
+        owner: 'acme',
+        repo: 'api',
+        title: 'Title',
+        body: 'Body',
+        labels: ['bug', 'urgent'],
+      })
+    })
+
+    it('throws on 401 auth error', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.create.mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { status: 401 }))
+      const client = new GitHubClient()
+      await expect(client.createIssue('acme', 'api', 'T', 'B')).rejects.toThrow(/authentication failed/i)
+    })
+
+    it('throws on 404 not found', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.create.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }))
+      const client = new GitHubClient()
+      await expect(client.createIssue('acme', 'api', 'T', 'B')).rejects.toThrow(/not found|no access/i)
+    })
+
+    it('throws on 403 forbidden', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.create.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { status: 403 }))
+      const client = new GitHubClient()
+      await expect(client.createIssue('acme', 'api', 'T', 'B')).rejects.toThrow(/authentication failed/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // fetchLabels
+  // -----------------------------------------------------------------------
+  describe('fetchLabels', () => {
+    it('returns sorted label names', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listLabelsForRepo.mockResolvedValueOnce({
+        data: [{ name: 'enhancement' }, { name: 'bug' }, { name: 'docs' }],
+        headers: {},
+      })
+      const client = new GitHubClient()
+      const labels = await client.fetchLabels('acme', 'api')
+      expect(labels).toEqual(['bug', 'docs', 'enhancement'])
+    })
+
+    it('paginates when link header has next', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listLabelsForRepo
+        .mockResolvedValueOnce({
+          data: [{ name: 'bug' }],
+          headers: { link: '<url>; rel="next"' },
+        })
+        .mockResolvedValueOnce({
+          data: [{ name: 'enhancement' }],
+          headers: {},
+        })
+      const client = new GitHubClient()
+      const labels = await client.fetchLabels('acme', 'api')
+      expect(labels).toEqual(['bug', 'enhancement'])
+      expect(mocks.issues.listLabelsForRepo).toHaveBeenCalledTimes(2)
+    })
+
+    it('returns empty array for repo with no labels', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listLabelsForRepo.mockResolvedValueOnce({ data: [], headers: {} })
+      const client = new GitHubClient()
+      const labels = await client.fetchLabels('acme', 'api')
+      expect(labels).toEqual([])
+    })
+
+    it('throws on 401 auth error', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listLabelsForRepo.mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { status: 401 }))
+      const client = new GitHubClient()
+      await expect(client.fetchLabels('acme', 'api')).rejects.toThrow(/authentication failed/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // listUserRepos
+  // -----------------------------------------------------------------------
+  describe('listUserRepos', () => {
+    it('returns repos with owner, name, description', async () => {
+      const mocks = getMockOctokit()
+      mocks.repos.listForAuthenticatedUser.mockResolvedValueOnce({
+        data: [
+          { owner: { login: 'alice' }, name: 'app', description: 'My app' },
+          { owner: { login: 'org' }, name: 'lib', description: null },
+        ],
+        headers: {},
+      })
+      const client = new GitHubClient()
+      const repos = await client.listUserRepos()
+      expect(repos).toEqual([
+        { owner: 'alice', name: 'app', description: 'My app' },
+        { owner: 'org', name: 'lib', description: '' },
+      ])
+    })
+
+    it('paginates when link header has next', async () => {
+      const mocks = getMockOctokit()
+      mocks.repos.listForAuthenticatedUser
+        .mockResolvedValueOnce({
+          data: [{ owner: { login: 'alice' }, name: 'app1', description: '' }],
+          headers: { link: '<url>; rel="next"' },
+        })
+        .mockResolvedValueOnce({
+          data: [{ owner: { login: 'alice' }, name: 'app2', description: '' }],
+          headers: {},
+        })
+      const client = new GitHubClient()
+      const repos = await client.listUserRepos()
+      expect(repos).toHaveLength(2)
+      expect(mocks.repos.listForAuthenticatedUser).toHaveBeenCalledTimes(2)
+    })
+
+    it('returns empty array when user has no repos', async () => {
+      const mocks = getMockOctokit()
+      mocks.repos.listForAuthenticatedUser.mockResolvedValueOnce({ data: [], headers: {} })
+      const client = new GitHubClient()
+      const repos = await client.listUserRepos()
+      expect(repos).toEqual([])
+    })
+
+    it('throws on 401 auth error', async () => {
+      const mocks = getMockOctokit()
+      mocks.repos.listForAuthenticatedUser.mockRejectedValueOnce(Object.assign(new Error('Unauthorized'), { status: 401 }))
+      const client = new GitHubClient()
+      await expect(client.listUserRepos()).rejects.toThrow(/authentication failed/i)
+    })
+
+    it('throws on 403 forbidden', async () => {
+      const mocks = getMockOctokit()
+      mocks.repos.listForAuthenticatedUser.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { status: 403 }))
+      const client = new GitHubClient()
+      await expect(client.listUserRepos()).rejects.toThrow(/authentication failed/i)
+    })
+
+    it('re-throws non-Octokit errors', async () => {
+      const mocks = getMockOctokit()
+      mocks.repos.listForAuthenticatedUser.mockRejectedValueOnce(new Error('Network failure'))
+      const client = new GitHubClient()
+      await expect(client.listUserRepos()).rejects.toThrow('Network failure')
     })
   })
 })

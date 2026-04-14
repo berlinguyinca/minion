@@ -1,18 +1,18 @@
-import type { RepoConfig, Issue, ProcessingResult, ReviewComment, AIModel } from '../types/index.js'
+import type { RepoConfig, Issue, ProcessingResult, ReviewComment } from '../types/index.js'
 import type { GitHubClient } from '../github/client.js'
-import type { AIRouter } from '../ai/router.js'
+import type { AIProvider } from '../types/index.js'
 import type { GitOperations } from '../git/operations.js'
 import type { StateManager } from '../config/state.js'
 import type { SpecCache } from './spec-cache.js'
 import { createTempDir, cleanupTempDir, buildBranchName } from '../git/index.js'
-import { buildSpecPrompt, buildImplementationPrompt, buildReviewPrompt, buildFollowUpPrompt } from './prompts.js'
+import { buildSpecPrompt, buildReviewPrompt, buildFollowUpPrompt } from './prompts.js'
 import { detectTestCommand, runTests } from './test-runner.js'
 import { humanizeAIError } from '../ai/errors.js'
 
 export class IssueProcessor {
   constructor(
     private readonly github: GitHubClient,
-    private readonly ai: AIRouter,
+    private readonly ai: AIProvider,
     private readonly git: GitOperations,
     private readonly state: StateManager,
     private readonly specCache?: SpecCache,
@@ -42,7 +42,7 @@ export class IssueProcessor {
         success: true,
         isDraft: false,
         testsPassed: false,
-        modelUsed: 'ollama',
+        modelUsed: 'map',
         filesChanged: [],
       }
     }
@@ -62,7 +62,7 @@ export class IssueProcessor {
           prUrl: existingPR.url,
           isDraft: existingPR.isDraft,
           testsPassed: false,
-          modelUsed: 'ollama',
+          modelUsed: 'map',
           filesChanged: [],
         }
       }
@@ -73,7 +73,7 @@ export class IssueProcessor {
     // 3. Clone repo to temp dir (try/finally for cleanup)
     const tempDir = createTempDir()
     let aiFailure: Error | null = null
-    let modelUsed: AIModel = 'ollama'
+    const modelUsed = 'map' as const
     let prUrl: string | undefined
     let prNumber: number | undefined
     let isDraft = false
@@ -87,22 +87,16 @@ export class IssueProcessor {
       // 4. Create branch
       await this.git.createBranch(tempDir, branchName)
 
-      // 5+6. AI Calls: generate spec then implement (combined for full-pipeline providers)
+      // 5+6. AI Call: MAP handles full pipeline (spec → review → execute)
       try {
-        const { model, agent: agentResult } =
-          await this.ai.invokeStructuredThenAgent<{ spec: string }>(
-            buildSpecPrompt(issue),
-            { type: 'object', properties: { spec: { type: 'string' } }, required: ['spec'] },
-            (spec) => buildImplementationPrompt(spec, `${repo.owner}/${repo.name}`),
-            tempDir,
-          )
-        modelUsed = model
+        const specPrompt = buildSpecPrompt(issue)
+        const agentResult = await this.ai.invokeAgent(specPrompt, tempDir)
 
         // Cache the model used for observability on re-runs
         this.specCache?.set(repoFullName, issue.number, issue.title, { success: true, filesWritten: [], stdout: '', stderr: '' }, modelUsed)
 
         // v2: if the agent returned a v2 payload, post answer/data steps as issue comments
-        if (agentResult?.stdout) {
+        if (agentResult.stdout) {
           try {
             const parsed = JSON.parse(agentResult.stdout) as {
               version?: number
@@ -207,44 +201,46 @@ export class IssueProcessor {
         await this.github.addLabel(repo.owner, repo.name, prNumber, 'ai-failed')
       }
 
-      // 12. AI Call 3: review PR diff (only if AI didn't fail)
-      let reviewComments: ReviewComment[] = []
+      // 12. AI review + follow-up (only if AI didn't fail)
       if (aiFailure === null) {
         try {
           const diff = await this.github.getPRDiff(repo.owner, repo.name, prNumber)
           const reviewPrompt = buildReviewPrompt(diff)
-          const reviewResult = await this.ai.invokeStructured<{ comments: ReviewComment[] }>(
-            reviewPrompt,
-            { type: 'object', properties: { comments: { type: 'array' } } },
-          )
-          modelUsed = reviewResult.model
-          reviewComments = reviewResult.data?.comments ?? []
+          const reviewResult = await this.ai.invokeAgent(reviewPrompt, tempDir)
+
+          // Parse review comments from agent output
+          let reviewComments: ReviewComment[] = []
+          try {
+            const parsed = JSON.parse(reviewResult.stdout) as { comments?: ReviewComment[] }
+            reviewComments = parsed.comments ?? []
+          } catch {
+            // Agent didn't return structured JSON — no comments to post
+          }
+
+          // 13. Post review comments
+          if (reviewComments.length > 0) {
+            try {
+              await this.github.postReviewComments(repo.owner, repo.name, prNumber, reviewComments)
+            } catch (err) {
+              console.warn(`[pipeline] Failed to post review comments on ${repoFullName} PR #${prNumber}:`, err instanceof Error ? err.message : String(err))
+            }
+
+            // 14. AI follow-up: address review comments
+            try {
+              const followUpPrompt = buildFollowUpPrompt(reviewComments)
+              await this.ai.invokeAgent(followUpPrompt, tempDir)
+
+              // 15. Commit and push follow-up
+              const committedFollowUp = await this.git.commitAll(tempDir, `ai: address review comments for #${issue.number}`)
+              if (committedFollowUp) {
+                await this.git.push(tempDir, branchName)
+              }
+            } catch (err) {
+              console.warn(`[pipeline] Review follow-up failed for ${repoFullName}#${issue.number}:`, err instanceof Error ? err.message : String(err))
+            }
+          }
         } catch (err) {
           console.warn(`[pipeline] Review AI call failed for ${repoFullName}#${issue.number}:`, err instanceof Error ? err.message : String(err))
-        }
-
-        // 13. Post review comments
-        if (reviewComments.length > 0) {
-          try {
-            await this.github.postReviewComments(repo.owner, repo.name, prNumber, reviewComments)
-          } catch (err) {
-            console.warn(`[pipeline] Failed to post review comments on ${repoFullName} PR #${prNumber}:`, err instanceof Error ? err.message : String(err))
-          }
-
-          // 14. AI Call 4: address review (invokeAgent with workingDir)
-          try {
-            const followUpPrompt = buildFollowUpPrompt(reviewComments)
-            const followUpResult = await this.ai.invokeAgent(followUpPrompt, tempDir)
-            modelUsed = followUpResult.model
-
-            // 15. Commit and push follow-up
-            const committedFollowUp = await this.git.commitAll(tempDir, `ai: address review comments for #${issue.number}`)
-            if (committedFollowUp) {
-              await this.git.push(tempDir, branchName)
-            }
-          } catch (err) {
-            console.warn(`[pipeline] Review follow-up failed for ${repoFullName}#${issue.number}:`, err instanceof Error ? err.message : String(err))
-          }
         }
       }
 

@@ -1,50 +1,15 @@
 /**
- * StateManager — tracks processed issues and AI quota consumption.
- *
- * Quota unit: 1 per `invokeStructured` or `invokeAgent` call.
- * Limits: claude=100, codex=50 by default.
- * Monthly reset: when `resetMonth` (YYYY-MM) is a past month the counters
- * are zeroed and `resetMonth` is updated to the current UTC month.
+ * StateManager — tracks processed issues and PR outcomes.
  *
  * Writes are atomic: data is written to `<statePath>.tmp` then renamed to
  * `<statePath>`, which prevents partial-write corruption.
  */
 
 import { writeFileSync, readFileSync, existsSync, renameSync } from 'node:fs'
-import type { PipelineState, AIModel, PipelineConfig, IssueOutcome, PROutcome, RetryConfig } from '../types/index.js'
+import type { PipelineState, IssueOutcome, PROutcome, RetryConfig } from '../types/index.js'
 
 const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_BACKOFF_MINUTES = 60
-
-function currentUtcMonth(): string {
-  return new Date().toISOString().slice(0, 7)
-}
-
-function buildDefaultState(): PipelineState {
-  const month = currentUtcMonth()
-  return {
-    processedIssues: {},
-    quota: {
-      claude: { used: 0, limit: 100, resetMonth: month },
-      codex: { used: 0, limit: 50, resetMonth: month },
-    },
-  }
-}
-
-function mergeQuotaLimits(
-  state: PipelineState,
-  quotaLimits?: PipelineConfig['quotaLimits'],
-): PipelineState {
-  if (quotaLimits?.claude !== undefined) {
-    const q = state.quota['claude']
-    if (q) q.limit = quotaLimits.claude
-  }
-  if (quotaLimits?.codex !== undefined) {
-    const q = state.quota['codex']
-    if (q) q.limit = quotaLimits.codex
-  }
-  return state
-}
 
 /** Migrate old number[] format to Record<number, IssueOutcome>. */
 function migrateProcessedIssues(
@@ -77,7 +42,6 @@ export class StateManager {
 
   constructor(
     private readonly statePath: string,
-    private readonly quotaLimits?: PipelineConfig['quotaLimits'],
     retryConfig?: RetryConfig,
   ) {
     this.maxAttempts = retryConfig?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
@@ -86,7 +50,7 @@ export class StateManager {
 
   private load(): PipelineState {
     if (!existsSync(this.statePath)) {
-      const state = mergeQuotaLimits(buildDefaultState(), this.quotaLimits)
+      const state: PipelineState = { processedIssues: {}, quota: {} }
       this.save(state)
       return state
     }
@@ -95,38 +59,19 @@ export class StateManager {
     const parsed = JSON.parse(raw) as {
       processedIssues: Record<string, unknown>
       reviewedPRs?: PipelineState['reviewedPRs']
-      quota: PipelineState['quota']
+      quota?: PipelineState['quota']
       starPromptSeen?: boolean
     }
 
     const state: PipelineState = {
       processedIssues: migrateProcessedIssues(parsed.processedIssues),
-      quota: parsed.quota,
+      quota: parsed.quota ?? {},
     }
     if (parsed.reviewedPRs !== undefined) {
       state.reviewedPRs = parsed.reviewedPRs
     }
     if (parsed.starPromptSeen !== undefined) {
       state.starPromptSeen = parsed.starPromptSeen
-    }
-
-    mergeQuotaLimits(state, this.quotaLimits)
-
-    // Monthly reset: iterate all quota entries and reset stale ones
-    const now = currentUtcMonth()
-    let dirty = false
-
-    for (const key of Object.keys(state.quota)) {
-      const q = state.quota[key]
-      if (q && q.resetMonth !== now) {
-        q.used = 0
-        q.resetMonth = now
-        dirty = true
-      }
-    }
-
-    if (dirty) {
-      this.save(state)
     }
 
     return state
@@ -162,11 +107,6 @@ export class StateManager {
     return elapsed >= this.backoffMs
   }
 
-  /** @deprecated Use shouldProcessIssue instead. */
-  isIssueProcessed(repoFullName: string, issueNumber: number): boolean {
-    return !this.shouldProcessIssue(repoFullName, issueNumber)
-  }
-
   /** Record the outcome of processing an issue (success or failure). */
   markIssueOutcome(repoFullName: string, issueNumber: number, outcome: IssueOutcome): void {
     const state = this.load()
@@ -176,54 +116,6 @@ export class StateManager {
       state.processedIssues[repoFullName] = repoIssues
     }
     repoIssues[issueNumber] = outcome
-    this.save(state)
-  }
-
-  /** @deprecated Use markIssueOutcome instead. */
-  markIssueProcessed(repoFullName: string, issueNumber: number): void {
-    this.markIssueOutcome(repoFullName, issueNumber, {
-      status: 'success',
-      lastAttempt: new Date().toISOString(),
-      attemptCount: 1,
-    })
-  }
-
-  /**
-   * Returns true if the given model has remaining quota or has no quota tracking.
-   * Models without a quota entry are considered unlimited.
-   */
-  hasQuota(model: AIModel): boolean {
-    const state = this.load()
-    const q = state.quota[model]
-    if (!q) return true // No quota entry = unlimited (e.g., ollama)
-    return q.used < q.limit
-  }
-
-  /**
-   * Returns the best available AI model given current quota usage.
-   * Priority: claude → codex → ollama (ollama has no quota limit).
-   * @deprecated Use hasQuota() with a configurable provider chain instead.
-   */
-  getAvailableModel(): AIModel {
-    const state = this.load()
-    const claude = state.quota['claude']
-    const codex = state.quota['codex']
-
-    if (claude && claude.used < claude.limit) return 'claude'
-    if (codex && codex.used < codex.limit) return 'codex'
-    return 'ollama'
-  }
-
-  /**
-   * Increments the used counter for the given model and persists.
-   * Quota unit: 1 per invokeStructured or invokeAgent call.
-   * Models without a quota entry are silently ignored (unlimited).
-   */
-  incrementUsage(model: AIModel): void {
-    const state = this.load()
-    const q = state.quota[model]
-    if (!q) return // No quota entry = unlimited, nothing to track
-    q.used += 1
     this.save(state)
   }
 

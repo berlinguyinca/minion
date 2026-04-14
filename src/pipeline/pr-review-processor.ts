@@ -1,41 +1,9 @@
-import type { RepoConfig, PRInfo, PRReviewResult, ReviewVerdict, SplitPlan, PipelineConfig } from '../types/index.js'
+import type { RepoConfig, PRInfo, PRReviewResult, ReviewVerdict, SplitPlan, PipelineConfig, AIProvider } from '../types/index.js'
 import type { GitHubClient } from '../github/client.js'
-import type { AIRouter } from '../ai/router.js'
 import type { GitOperations } from '../git/operations.js'
 import { createTempDir, cleanupTempDir } from '../git/index.js'
 import { buildAutoReviewPrompt, buildSplitPlanPrompt } from './prompts.js'
 import { detectTestCommand, runTests } from './test-runner.js'
-
-const VERDICT_SCHEMA = {
-  type: 'object',
-  properties: {
-    verdict: { type: 'string', enum: ['merge', 'split'] },
-    confidence: { type: 'number' },
-    reasoning: { type: 'string' },
-    concerns: { type: 'array', items: { type: 'string' } },
-  },
-  required: ['verdict', 'confidence', 'reasoning', 'concerns'],
-}
-
-const SPLIT_PLAN_SCHEMA = {
-  type: 'object',
-  properties: {
-    groups: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          description: { type: 'string' },
-          files: { type: 'array', items: { type: 'string' } },
-        },
-        required: ['name', 'description', 'files'],
-      },
-    },
-    reasoning: { type: 'string' },
-  },
-  required: ['groups', 'reasoning'],
-}
 
 /** Minimum thresholds below which a PR is too small to split. */
 const MIN_FILES_TO_SPLIT = 5
@@ -51,7 +19,7 @@ interface VerdictResult {
 export class PRReviewProcessor {
   constructor(
     private readonly github: GitHubClient,
-    private readonly ai: AIRouter,
+    private readonly ai: AIProvider,
     private readonly git: GitOperations,
     private readonly config: PipelineConfig,
   ) {}
@@ -65,13 +33,15 @@ export class PRReviewProcessor {
       const changedFiles = parseDiffFileNames(diff)
 
       // 2. AI verdict
-      const verdictResult = await this.ai.invokeStructuredForTask<VerdictResult>(
-        'prReview',
-        buildAutoReviewPrompt(diff, changedFiles),
-        VERDICT_SCHEMA,
-      )
+      const verdictAgentResult = await this.ai.invokeAgent(buildAutoReviewPrompt(diff, changedFiles), process.cwd())
 
-      const verdict: ReviewVerdict = verdictResult.data?.verdict ?? 'merge'
+      let verdict: ReviewVerdict = 'merge'
+      try {
+        const parsed = JSON.parse(verdictAgentResult.stdout) as VerdictResult
+        verdict = parsed.verdict ?? 'merge'
+      } catch {
+        // Default to merge if agent doesn't return structured output
+      }
       const isSplitChild = pr.labels.includes('ai-split-child')
 
       // 3. Route based on verdict
@@ -151,13 +121,14 @@ export class PRReviewProcessor {
     changedFiles: string[],
   ): Promise<{ childPRs: number[]; error?: string }> {
     // 1. Get split plan from AI
-    const planResult = await this.ai.invokeStructuredForTask<SplitPlan>(
-      'prReview',
-      buildSplitPlanPrompt(diff, changedFiles),
-      SPLIT_PLAN_SCHEMA,
-    )
+    const planAgentResult = await this.ai.invokeAgent(buildSplitPlanPrompt(diff, changedFiles), process.cwd())
 
-    const plan = planResult.data
+    let plan: SplitPlan | undefined
+    try {
+      plan = JSON.parse(planAgentResult.stdout) as SplitPlan
+    } catch {
+      // Agent didn't return structured output
+    }
     if (!plan || plan.groups.length < 2) {
       return { childPRs: [], error: 'AI produced invalid split plan (fewer than 2 groups)' }
     }

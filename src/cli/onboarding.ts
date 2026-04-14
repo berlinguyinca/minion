@@ -2,17 +2,12 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
-import type { AIModel, RepoConfig } from '../types/index.js'
-
-const DEFAULT_PROVIDER_CHAIN: AIModel[] = ['ollama']
-const DEFAULT_OLLAMA_MODEL = 'qwen2.5-coder:latest'
+import type { RepoConfig } from '../types/index.js'
 
 interface OnboardingAnswers {
   token?: string
   repos: RepoConfig[]
   maxIssuesPerRun: number
-  providerChain: AIModel[]
-  ollamaModel: string
 }
 
 export interface OnboardingOptions {
@@ -60,11 +55,6 @@ function renderConfigTemplate(answers: OnboardingAnswers): string {
     '# Process one issue at a time by default until the workflow is proven in your environment.',
     `maxIssuesPerRun: ${answers.maxIssuesPerRun}`,
     '',
-    '# Ollama-first defaults for local execution.',
-    'providerChain:',
-    ...answers.providerChain.map(provider => `  - ${provider}`),
-    `ollamaModel: ${answers.ollamaModel}`,
-    '',
     '# Retry configuration for failed issues.',
     'retry:',
     '  maxAttempts: 3',
@@ -76,12 +66,6 @@ function renderConfigTemplate(answers: OnboardingAnswers): string {
     'mergeDraftPRs: false',
     'autoMerge: true',
     'autoMergeRequireTests: true',
-    '',
-    '# Optional per-provider settings.',
-    'providers:',
-    '  ollama:',
-    '    timeoutMs: 300000',
-    `    model: ${answers.ollamaModel}`,
     '',
   ].join('\n')
 }
@@ -219,19 +203,16 @@ async function collectAnswers(
   output.log('')
   output.log('Minion configuration wizard')
   output.log('--------------------------')
-  output.log('The generated config defaults to Ollama for local-first execution.')
+  output.log('Minion uses MAP (multi-agent-pipeline) to process issues.')
   output.log('')
 
   const token = (await prompt('GitHub token with repo scope (leave blank to fill later): ')).trim() || undefined
   const repos = await collectRepos(prompt, output)
-  const ollamaModel = (await prompt(`Ollama model [${DEFAULT_OLLAMA_MODEL}]: `)).trim() || DEFAULT_OLLAMA_MODEL
   const maxIssuesRaw = await prompt('Maximum issues per run [1]: ')
 
   const answers: OnboardingAnswers = {
     repos,
     maxIssuesPerRun: parsePositiveInteger(maxIssuesRaw, 1),
-    providerChain: [...DEFAULT_PROVIDER_CHAIN],
-    ollamaModel,
   }
 
   if (token !== undefined) {
@@ -243,8 +224,6 @@ async function collectAnswers(
   for (const repo of answers.repos) {
     output.log(`- ${repo.owner}/${repo.name} (${repo.defaultBranch ?? 'main'})`)
   }
-  output.log(`- providerChain: ${answers.providerChain.join(', ')}`)
-  output.log(`- ollamaModel: ${answers.ollamaModel}`)
   output.log(`- maxIssuesPerRun: ${answers.maxIssuesPerRun}`)
 
   return answers
@@ -254,8 +233,6 @@ function buildNonInteractiveDefaults(): OnboardingAnswers {
   return {
     repos: [{ owner: 'my-org', name: 'my-repo', defaultBranch: 'main' }],
     maxIssuesPerRun: 1,
-    providerChain: [...DEFAULT_PROVIDER_CHAIN],
-    ollamaModel: DEFAULT_OLLAMA_MODEL,
   }
 }
 
@@ -332,9 +309,6 @@ export async function runOnboarding(options: OnboardingOptions): Promise<number>
     const checks = [
       ['git', commandExists('git')],
       ['pnpm', commandExists('pnpm')],
-      ['ollama', commandExists('ollama')],
-      ['claude', commandExists('claude')],
-      ['codex', commandExists('codex')],
       ['map', commandExists('map')],
     ] as const
 
@@ -348,7 +322,7 @@ export async function runOnboarding(options: OnboardingOptions): Promise<number>
     output.log('')
     output.log('Next steps:')
     output.log(`1. Review ${displayPath(cwd, configPath)} and confirm the repository list.`)
-    output.log(`2. Start Ollama and ensure the model \`${answers.ollamaModel}\` is available.`)
+    output.log(`2. Ensure the \`map\` binary is installed and on PATH.`)
     output.log(`3. Add GITHUB_TOKEN to ${displayPath(cwd, envPath)} if it is still blank.`)
     output.log(`4. Run \`pnpm start -- --config ${displayPath(cwd, configPath)}\` from this repo, or \`minion --config ${displayPath(cwd, configPath)}\` if installed globally.`)
 

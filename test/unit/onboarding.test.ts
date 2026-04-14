@@ -13,7 +13,7 @@ describe('runOnboarding()', () => {
     }
   })
 
-  it('creates ollama-first starter config and env files in non-interactive mode', async () => {
+  it('creates starter config and env files in non-interactive mode', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'minion-onboard-'))
     tempDirs.push(cwd)
     const configPath = join(cwd, 'config.yaml')
@@ -37,8 +37,6 @@ describe('runOnboarding()', () => {
 
     expect(code).toBe(0)
     expect(config).toContain('owner: my-org')
-    expect(config).toContain('providerChain:')
-    expect(config).toContain('  - ollama')
     expect(config).toContain('maxIssuesPerRun: 1')
     expect(env).toContain('GITHUB_TOKEN=')
   })
@@ -58,7 +56,6 @@ describe('runOnboarding()', () => {
       '',
       '',
       '',
-      'llama3.1:8b',
       '2',
     ]
     const prompt = vi.fn(async () => answers.shift() ?? '')
@@ -86,9 +83,6 @@ describe('runOnboarding()', () => {
     expect(config).toContain('defaultBranch: develop')
     expect(config).toContain('testCommand: pnpm test')
     expect(config).toContain('name: api')
-    expect(config).toContain('providerChain:')
-    expect(config).toContain('  - ollama')
-    expect(config).toContain('ollamaModel: llama3.1:8b')
     expect(config).toContain('maxIssuesPerRun: 2')
   })
 
@@ -116,8 +110,7 @@ describe('runOnboarding()', () => {
     })
 
     const config = readFileSync(configPath, 'utf-8')
-    expect(config).toContain('providerChain:')
-    expect(config).toContain('  - ollama')
+    expect(config).toContain('repos:')
     expect(config).not.toContain('maxIssuesPerRun: 99')
   })
 })

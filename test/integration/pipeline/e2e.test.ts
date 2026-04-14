@@ -18,9 +18,8 @@ import { tmpdir } from 'node:os'
 import { execSync } from 'node:child_process'
 import { PipelineRunner } from '../../../src/pipeline/index.js'
 import { GitHubClient } from '../../../src/github/index.js'
-import { AIRouter } from '../../../src/ai/index.js'
 import { StateManager } from '../../../src/config/index.js'
-import type { PipelineConfig, AIProvider, AIModel, StructuredResult, AgentResult } from '../../../src/types/index.js'
+import type { PipelineConfig, AIProvider, StructuredResult, AgentResult } from '../../../src/types/index.js'
 
 // Git identity env vars needed in CI-like environments
 const GIT_ENV = {
@@ -205,15 +204,12 @@ function startFakeGitHubServer(): Promise<FakeServer> {
  * A fake AIProvider that invokes the fixture fake-claude.sh script.
  * Structured calls return a hardcoded spec; agent calls return success.
  */
-function makeFakeAIProvider(model: AIModel): AIProvider {
+function makeFakeAIProvider(): AIProvider {
   return {
-    model,
-    handlesFullPipeline: false,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    async invokeStructured<T>(_prompt: string, _schema: object): Promise<StructuredResult<T>> {
-      // Return a minimal spec so IssueProcessor can proceed
-      const data = { spec: 'Implement fix for widget issue', comments: [] } as unknown as T
-      return { success: true, data, rawOutput: JSON.stringify(data) }
+    model: 'map',
+    handlesFullPipeline: true,
+    async invokeStructured<T>(): Promise<StructuredResult<T>> {
+      throw new Error('MAPWrapper does not support invokeStructured')
     },
     async invokeAgent(_prompt: string, workingDir: string): Promise<AgentResult> {
       const writtenFile = join(workingDir, 'widget.ts')
@@ -258,12 +254,7 @@ describe('PipelineRunner E2E — fully local environment', () => {
     }
     const github = new GitHubClient('fake-token', fakeServer.baseUrl)
 
-    const fakeProvider = makeFakeAIProvider('claude')
-    const ai = new AIRouter(state, {
-      claude: fakeProvider,
-      codex: makeFakeAIProvider('codex'),
-      ollama: makeFakeAIProvider('ollama'),
-    })
+    const ai = makeFakeAIProvider()
 
     const config: PipelineConfig = {
       repos: [
@@ -285,7 +276,7 @@ describe('PipelineRunner E2E — fully local environment', () => {
 
     // 2. State file marks issue #1 as processed for "local/test-repo"
     const state2 = new StateManager(statePath)
-    expect(state2.isIssueProcessed('local/test-repo', 1)).toBe(true)
+    expect(state2.shouldProcessIssue('local/test-repo', 1)).toBe(false)
 
     // 3. Fake HTTP server received POST to /repos/local/test-repo/pulls
     const pullsCalls = fakeServer.calls.filter(
@@ -303,17 +294,17 @@ describe('PipelineRunner E2E — fully local environment', () => {
   it('does not re-process an already-processed issue', async () => {
     const state = new StateManager(statePath)
     // Pre-mark the issue as processed
-    state.markIssueProcessed('local/test-repo', 1)
+    state.markIssueOutcome('local/test-repo', 1, {
+      status: 'success',
+      lastAttempt: new Date().toISOString(),
+      attemptCount: 1,
+    })
 
     if (fakeServer === null) {
       throw new Error('Fake server failed to start')
     }
     const github = new GitHubClient('fake-token', fakeServer.baseUrl)
-    const ai = new AIRouter(state, {
-      claude: makeFakeAIProvider('claude'),
-      codex: makeFakeAIProvider('codex'),
-      ollama: makeFakeAIProvider('ollama'),
-    })
+    const ai = makeFakeAIProvider()
 
     const config: PipelineConfig = {
       repos: [

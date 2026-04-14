@@ -1,7 +1,6 @@
 import type { StateManager } from '../config/state.js'
 import type { GitHubClient } from '../github/client.js'
-import type { AIRouter } from '../ai/router.js'
-import type { PipelineConfig, PROutcome } from '../types/index.js'
+import type { PipelineConfig, PROutcome, AIProvider } from '../types/index.js'
 import { IssueProcessor } from './issue-processor.js'
 import { MergeProcessor } from './merge-processor.js'
 import { PRReviewProcessor } from './pr-review-processor.js'
@@ -16,7 +15,7 @@ export class PipelineRunner {
   constructor(
     private readonly config: PipelineConfig,
     private readonly github: GitHubClient,
-    private readonly ai: AIRouter,
+    private readonly ai: AIProvider,
     private readonly state: StateManager,
   ) {
     const specCache = new SpecCache()

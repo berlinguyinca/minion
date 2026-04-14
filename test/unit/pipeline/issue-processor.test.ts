@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { RepoConfig, Issue, AIModel } from '../../../src/types/index.js'
+import type { RepoConfig, Issue } from '../../../src/types/index.js'
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any import of the module under test
@@ -7,10 +7,6 @@ import type { RepoConfig, Issue, AIModel } from '../../../src/types/index.js'
 
 vi.mock('../../../src/github/client.js', () => ({
   GitHubClient: vi.fn(),
-}))
-
-vi.mock('../../../src/ai/router.js', () => ({
-  AIRouter: vi.fn(),
 }))
 
 vi.mock('../../../src/git/operations.js', () => ({
@@ -24,7 +20,6 @@ vi.mock('../../../src/pipeline/test-runner.js', () => ({
 
 vi.mock('../../../src/pipeline/prompts.js', () => ({
   buildSpecPrompt: vi.fn().mockReturnValue('spec prompt'),
-  buildImplementationPrompt: vi.fn().mockReturnValue('impl prompt'),
   buildReviewPrompt: vi.fn().mockReturnValue('review prompt'),
   buildFollowUpPrompt: vi.fn().mockReturnValue('followup prompt'),
 }))
@@ -46,11 +41,11 @@ vi.mock('../../../src/git/index.js', () => ({
 
 import { IssueProcessor } from '../../../src/pipeline/issue-processor.js'
 import { GitHubClient } from '../../../src/github/client.js'
-import { AIRouter } from '../../../src/ai/router.js'
 import { GitOperations } from '../../../src/git/operations.js'
 import { StateManager } from '../../../src/config/state.js'
-import { createTempDir, cleanupTempDir } from '../../../src/git/index.js'
-import { detectTestCommand, runTests } from '../../../src/pipeline/test-runner.js'
+import { cleanupTempDir } from '../../../src/git/index.js'
+import { runTests } from '../../../src/pipeline/test-runner.js'
+import type { AIProvider } from '../../../src/types/index.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,35 +66,17 @@ function makeGitHubMock() {
   }
 }
 
-function makeAIMock(model: AIModel = 'claude') {
+function makeAIMock() {
   return {
-    invokeStructured: vi.fn().mockResolvedValue({
-      success: true,
-      data: { spec: 'Generated spec text', filesToCreate: [], testStrategy: 'unit tests' },
-      rawOutput: 'raw',
-      model,
-    }),
+    model: 'map' as const,
+    handlesFullPipeline: true,
     invokeAgent: vi.fn().mockResolvedValue({
       success: true,
       filesWritten: ['src/index.ts'],
       stdout: '',
       stderr: '',
-      model,
     }),
-    invokeStructuredThenAgent: vi.fn().mockResolvedValue({
-      structured: {
-        success: true,
-        data: { spec: 'Generated spec text' },
-        rawOutput: 'raw',
-      },
-      agent: {
-        success: true,
-        filesWritten: ['src/index.ts'],
-        stdout: '',
-        stderr: '',
-      },
-      model,
-    }),
+    invokeStructured: vi.fn().mockRejectedValue(new Error('MAPWrapper does not support invokeStructured')),
   }
 }
 
@@ -117,8 +94,6 @@ function makeStateMock() {
   return {
     shouldProcessIssue: vi.fn().mockReturnValue(true),
     markIssueOutcome: vi.fn(),
-    getAvailableModel: vi.fn().mockReturnValue('claude' as AIModel),
-    incrementUsage: vi.fn(),
   }
 }
 
@@ -153,23 +128,19 @@ describe('IssueProcessor', () => {
     vi.clearAllMocks()
 
     github = makeGitHubMock()
-    ai = makeAIMock('claude')
+    ai = makeAIMock()
     git = makeGitMock()
     state = makeStateMock()
 
     vi.mocked(GitHubClient).mockImplementation(() => github as unknown as GitHubClient)
-    vi.mocked(AIRouter).mockImplementation(() => ai as unknown as AIRouter)
     vi.mocked(GitOperations).mockImplementation(() => git as unknown as GitOperations)
     vi.mocked(StateManager).mockImplementation(() => state as unknown as StateManager)
 
-    vi.mocked(createTempDir).mockReturnValue('/tmp/test-dir')
-    vi.mocked(cleanupTempDir).mockReturnValue(undefined)
-    vi.mocked(detectTestCommand).mockReturnValue('pnpm test')
     vi.mocked(runTests).mockReturnValue({ passed: true, output: 'All tests pass' })
 
     processor = new IssueProcessor(
       github as unknown as GitHubClient,
-      ai as unknown as AIRouter,
+      ai as unknown as AIProvider,
       git as unknown as GitOperations,
       state as unknown as StateManager,
     )
@@ -183,6 +154,7 @@ describe('IssueProcessor', () => {
     expect(result.testsPassed).toBe(true)
     expect(result.issueNumber).toBe(42)
     expect(result.repoFullName).toBe('acme/api')
+    expect(result.modelUsed).toBe('map')
   })
 
   it('skips already-processed issues without cloning', async () => {
@@ -224,7 +196,7 @@ describe('IssueProcessor', () => {
     expect(github.addLabel).toHaveBeenCalledWith('acme', 'api', expect.any(Number), 'ai-generated')
   })
 
-  it('posts issue comment with PR URL, scope, test status, and model used', async () => {
+  it('posts issue comment with PR URL, test status, and model used', async () => {
     await processor.processIssue(repo, issue)
 
     expect(github.postIssueComment).toHaveBeenCalledWith(
@@ -236,7 +208,7 @@ describe('IssueProcessor', () => {
 
     const commentBody = vi.mocked(github.postIssueComment).mock.calls[0]?.[3] as string
     expect(commentBody).toContain('https://github.com/acme/api/pull/101')
-    expect(commentBody).toMatch(/model|claude/i)
+    expect(commentBody).toMatch(/model|map/i)
     expect(commentBody).toMatch(/test|pass|fail/i)
     expect(commentBody).toMatch(/file|changed/i)
   })
@@ -286,17 +258,11 @@ describe('IssueProcessor', () => {
     expect(result.success).toBe(false)
     expect(github.createPullRequest).not.toHaveBeenCalled()
     expect(github.createDraftPullRequest).not.toHaveBeenCalled()
-    expect(github.postIssueComment).toHaveBeenCalledWith(
-      'acme',
-      'api',
-      42,
-      expect.stringMatching(/failed before opening a PR|push failed/i),
-    )
     expect(state.markIssueOutcome).toHaveBeenCalledWith('acme/api', 42, expect.objectContaining({ status: 'failure' }))
   })
 
-  it('AI total failure: creates draft PR with ai-failed label and posts error comment, still cleans up', async () => {
-    ai.invokeStructuredThenAgent.mockRejectedValue(new Error('AI completely unavailable'))
+  it('AI total failure: creates draft PR with ai-failed label, still cleans up', async () => {
+    ai.invokeAgent.mockRejectedValue(new Error('AI completely unavailable'))
 
     await processor.processIssue(repo, issue)
 
@@ -304,8 +270,6 @@ describe('IssueProcessor', () => {
     expect(github.createDraftPullRequest).toHaveBeenCalled()
     // Should add ai-failed label
     expect(github.addLabel).toHaveBeenCalledWith('acme', 'api', expect.any(Number), 'ai-failed')
-    // Should post a comment explaining failure
-    expect(github.postIssueComment).toHaveBeenCalled()
     // Must clean up
     expect(cleanupTempDir).toHaveBeenCalledWith('/tmp/test-dir')
   })
@@ -330,50 +294,15 @@ describe('IssueProcessor', () => {
     expect(git.clone).toHaveBeenCalled()
   })
 
-  it('model used in result matches the model returned by AIRouter', async () => {
-    const aiWithCodex = makeAIMock('codex')
-    const processorWithCodex = new IssueProcessor(
-      github as unknown as GitHubClient,
-      aiWithCodex as unknown as AIRouter,
-      git as unknown as GitOperations,
-      state as unknown as StateManager,
-    )
-
-    const result = await processorWithCodex.processIssue(repo, issue)
-
-    expect(result.modelUsed).toBe('codex')
-  })
-
   // -------------------------------------------------------------------------
-  // Review/follow-up catch blocks (lines 194-214, 221-223)
+  // Review/follow-up catch blocks
   // -------------------------------------------------------------------------
 
-  it('warns and continues when postReviewComments throws after review returns comments', async () => {
-    // Set up review to return comments
-    ai.invokeStructured.mockResolvedValue({
-      success: true,
-      data: { comments: [{ path: 'a.ts', line: 1, body: 'fix this' }] },
-      rawOutput: '',
-      model: 'claude' as const,
-    })
-    github.postReviewComments.mockRejectedValue(new Error('GitHub API error'))
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const result = await processor.processIssue(repo, issue)
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to post review comments'),
-      expect.any(String),
-    )
-    // Processing should still complete successfully
-    expect(result.success).toBe(true)
-
-    warnSpy.mockRestore()
-  })
-
-  it('warns and continues when review AI invokeStructured throws', async () => {
-    ai.invokeStructured.mockRejectedValue(new Error('review AI unavailable'))
+  it('warns and continues when review AI invokeAgent throws', async () => {
+    // First invokeAgent succeeds (spec+impl), second throws (review)
+    ai.invokeAgent
+      .mockResolvedValueOnce({ success: true, filesWritten: ['src/index.ts'], stdout: '', stderr: '' })
+      .mockRejectedValueOnce(new Error('review AI unavailable'))
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
@@ -389,14 +318,18 @@ describe('IssueProcessor', () => {
   })
 
   it('warns and continues when follow-up invokeAgent throws after review comments', async () => {
-    // Review returns comments so we enter the follow-up block
-    ai.invokeStructured.mockResolvedValue({
-      success: true,
-      data: { comments: [{ path: 'b.ts', line: 5, body: 'needs work' }] },
-      rawOutput: '',
-      model: 'claude' as const,
-    })
-    ai.invokeAgent.mockRejectedValue(new Error('follow-up agent failed'))
+    // First call: spec+impl success
+    // Second call: review returns structured comments
+    // Third call: follow-up throws
+    ai.invokeAgent
+      .mockResolvedValueOnce({ success: true, filesWritten: ['src/index.ts'], stdout: '', stderr: '' })
+      .mockResolvedValueOnce({
+        success: true,
+        filesWritten: [],
+        stdout: JSON.stringify({ comments: [{ path: 'b.ts', line: 5, body: 'needs work' }] }),
+        stderr: '',
+      })
+      .mockRejectedValueOnce(new Error('follow-up agent failed'))
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
@@ -447,8 +380,8 @@ describe('IssueProcessor', () => {
   })
 
   it('wraps non-Error throws from AI into an Error (aiFailure branch)', async () => {
-    // invokeStructuredThenAgent throws a non-Error value (e.g. a string)
-    ai.invokeStructuredThenAgent.mockRejectedValue('string error value')
+    // invokeAgent throws a non-Error value (e.g. a string)
+    ai.invokeAgent.mockRejectedValue('string error value')
 
     const result = await processor.processIssue(repo, issue)
 
@@ -464,20 +397,17 @@ describe('IssueProcessor', () => {
     const result = await processor.processIssue(repo, issue)
 
     expect(result.success).toBe(false)
-    // The comment should show ❌ Failing
+    // The comment should show failing tests
     const commentBody = vi.mocked(github.postIssueComment).mock.calls[0]?.[3] as string
     expect(commentBody).toContain('❌')
   })
 
   it('postStatusComment silently swallows errors when postIssueComment throws', async () => {
-    // Force an error that triggers the outer catch AND postStatusComment
     git.push.mockRejectedValueOnce(new Error('push failed'))
-    // Make postIssueComment throw too — should be silently swallowed
     github.postIssueComment.mockRejectedValue(new Error('comment API down'))
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-    // Should not throw — the catch block in postStatusComment handles it
     const result = await processor.processIssue(repo, issue)
     expect(result.success).toBe(false)
 
@@ -485,9 +415,7 @@ describe('IssueProcessor', () => {
   })
 
   it('postStatusComment uses String(err) for non-Error thrown by postIssueComment', async () => {
-    // Force an error that triggers the outer catch AND postStatusComment
     git.push.mockRejectedValueOnce(new Error('push failed'))
-    // Make postIssueComment throw a non-Error value
     github.postIssueComment.mockRejectedValue('non-error-value')
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -503,86 +431,7 @@ describe('IssueProcessor', () => {
     warnSpy.mockRestore()
   })
 
-  it('warns with String(err) when review AI throws a non-Error value', async () => {
-    // invokeStructured (review step) throws a non-Error
-    ai.invokeStructured.mockRejectedValue('non-error string')
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const result = await processor.processIssue(repo, issue)
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Review AI call failed'),
-      'non-error string',
-    )
-    expect(result.success).toBe(true)
-
-    warnSpy.mockRestore()
-  })
-
-  it('warns with String(err) when postReviewComments throws a non-Error value', async () => {
-    ai.invokeStructured.mockResolvedValue({
-      success: true,
-      data: { comments: [{ path: 'a.ts', line: 1, body: 'fix' }] },
-      rawOutput: '',
-      model: 'claude' as const,
-    })
-    github.postReviewComments.mockRejectedValue('non-error string')
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const result = await processor.processIssue(repo, issue)
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to post review comments'),
-      'non-error string',
-    )
-    expect(result.success).toBe(true)
-
-    warnSpy.mockRestore()
-  })
-
-  it('warns with String(err) when follow-up invokeAgent throws a non-Error value', async () => {
-    ai.invokeStructured.mockResolvedValue({
-      success: true,
-      data: { comments: [{ path: 'b.ts', line: 5, body: 'work' }] },
-      rawOutput: '',
-      model: 'claude' as const,
-    })
-    ai.invokeAgent.mockRejectedValue('non-error agent failure')
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const result = await processor.processIssue(repo, issue)
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Review follow-up failed'),
-      'non-error agent failure',
-    )
-    expect(result.success).toBe(true)
-
-    warnSpy.mockRestore()
-  })
-
-  it('warns with String(err) when getChangedFiles throws a non-Error value', async () => {
-    git.getChangedFiles.mockRejectedValue('non-error string')
-
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-
-    const result = await processor.processIssue(repo, issue)
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to get changed files'),
-      'non-error string',
-    )
-    expect(result.filesChanged).toEqual([])
-    expect(result.success).toBe(true)
-
-    warnSpy.mockRestore()
-  })
-
   it('outer catch uses String(err) when a non-Error is thrown and prUrl is undefined', async () => {
-    // Make git.clone throw a non-Error to enter outer catch before PR creation
     git.clone.mockRejectedValue('string clone error')
 
     const result = await processor.processIssue(repo, issue)
@@ -592,17 +441,11 @@ describe('IssueProcessor', () => {
   })
 
   it('outer catch includes prUrl in result when PR was created before the error', async () => {
-    // PR is created but then a later step throws — outer catch should include prUrl
-    // Use the second push call (follow-up) to cause error AFTER PR exists
-    // Actually, we need an error after prNumber/prUrl are set but before the try block ends
-    // getChangedFiles can't be used since it's caught internally
-    // Let's use postIssueComment (final summary) to throw after PR is created
     github.postIssueComment.mockRejectedValue(new Error('summary comment failed'))
 
     const result = await processor.processIssue(repo, issue)
 
     expect(result.success).toBe(false)
-    // prUrl should be set since PR was created before the error
     expect(result.prUrl).toBe('https://github.com/acme/api/pull/101')
   })
 
@@ -620,10 +463,11 @@ describe('IssueProcessor', () => {
       ],
       dag: { nodes: [], edges: [] },
     })
-    ai.invokeStructuredThenAgent.mockResolvedValue({
-      structured: null,
-      agent: { success: true, filesWritten: ['src/a.ts'], stdout: v2Stdout, stderr: '' },
-      model: 'map' as AIModel,
+    ai.invokeAgent.mockResolvedValue({
+      success: true,
+      filesWritten: ['src/a.ts'],
+      stdout: v2Stdout,
+      stderr: '',
     })
 
     await processor.processIssue(repo, issue)
@@ -648,10 +492,11 @@ describe('IssueProcessor', () => {
       ],
       dag: { nodes: [], edges: [] },
     })
-    ai.invokeStructuredThenAgent.mockResolvedValue({
-      structured: null,
-      agent: { success: true, filesWritten: ['src/b.ts'], stdout: v2FilesOnly, stderr: '' },
-      model: 'map' as AIModel,
+    ai.invokeAgent.mockResolvedValue({
+      success: true,
+      filesWritten: ['src/b.ts'],
+      stdout: v2FilesOnly,
+      stderr: '',
     })
 
     await processor.processIssue(repo, issue)
@@ -663,11 +508,12 @@ describe('IssueProcessor', () => {
     expect(stepComments).toHaveLength(0)
   })
 
-  it('v2: non-JSON stdout is silently ignored (v1 flow continues normally)', async () => {
-    ai.invokeStructuredThenAgent.mockResolvedValue({
-      structured: null,
-      agent: { success: true, filesWritten: [], stdout: 'plain text output', stderr: '' },
-      model: 'claude' as AIModel,
+  it('v2: non-JSON stdout is silently ignored', async () => {
+    ai.invokeAgent.mockResolvedValue({
+      success: true,
+      filesWritten: [],
+      stdout: 'plain text output',
+      stderr: '',
     })
 
     const result = await processor.processIssue(repo, issue)

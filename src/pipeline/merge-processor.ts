@@ -1,21 +1,15 @@
-import type { RepoConfig, PRInfo, MergeResult, PipelineConfig } from '../types/index.js'
+import type { RepoConfig, PRInfo, MergeResult, PipelineConfig, AIProvider } from '../types/index.js'
 import type { GitHubClient } from '../github/client.js'
-import type { AIRouter } from '../ai/router.js'
 import type { GitOperations } from '../git/operations.js'
 import { createTempDir, cleanupTempDir } from '../git/index.js'
 import { buildConflictResolutionPrompt } from './prompts.js'
 
 const MAX_REBASE_ROUNDS = 10
-const CONFLICT_RESOLUTION_SCHEMA = {
-  type: 'object',
-  properties: { resolvedContent: { type: 'string' } },
-  required: ['resolvedContent'],
-}
 
 export class MergeProcessor {
   constructor(
     private readonly github: GitHubClient,
-    private readonly ai: AIRouter,
+    private readonly ai: AIProvider,
     private readonly git: GitOperations,
     private readonly config: PipelineConfig,
   ) {}
@@ -49,19 +43,27 @@ export class MergeProcessor {
         round++
 
         for (const conflict of rebaseResult.conflicts) {
-          const resolved = await this.ai.invokeStructuredForTask<{ resolvedContent: string }>(
-            'conflictResolution',
-            buildConflictResolutionPrompt(conflict),
-            CONFLICT_RESOLUTION_SCHEMA,
-          )
+          const resolveResult = await this.ai.invokeAgent(buildConflictResolutionPrompt(conflict), tempDir)
 
-          if (!resolved.data?.resolvedContent) {
+          // Parse resolved content from agent output
+          let resolvedContent: string | undefined
+          try {
+            const parsed = JSON.parse(resolveResult.stdout) as { resolvedContent?: string }
+            resolvedContent = parsed.resolvedContent
+          } catch {
+            // Agent returned raw content — use stdout directly if non-empty
+            if (resolveResult.stdout.trim()) {
+              resolvedContent = resolveResult.stdout
+            }
+          }
+
+          if (!resolvedContent) {
             await this.git.abortRebase(tempDir)
             await this.postMergeComment(repo, pr.number, `Unable to auto-merge: AI could not resolve conflict in \`${conflict.path}\`.`)
             return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: 'AI conflict resolution failed' }
           }
 
-          await this.git.resolveConflict(tempDir, conflict.path, resolved.data.resolvedContent)
+          await this.git.resolveConflict(tempDir, conflict.path, resolvedContent)
           totalConflictsResolved++
         }
 

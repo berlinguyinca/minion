@@ -13,11 +13,12 @@ vi.mock('../../src/github/index.js', () => ({
 }))
 
 vi.mock('../../src/ai/index.js', () => ({
-  AIRouter: vi.fn(),
-  ClaudeWrapper: vi.fn(),
-  CodexWrapper: vi.fn(),
-  OllamaWrapper: vi.fn(),
-  MAPWrapper: vi.fn(),
+  MAPWrapper: vi.fn().mockImplementation(() => ({
+    model: 'map',
+    handlesFullPipeline: true,
+    invokeAgent: vi.fn(),
+    invokeStructured: vi.fn(),
+  })),
 }))
 
 vi.mock('../../src/config/index.js', () => ({
@@ -40,7 +41,7 @@ vi.mock('node:fs', async (importOriginal) => {
 import { run } from '../../src/index.js'
 import { PipelineRunner } from '../../src/pipeline/index.js'
 import { GitHubClient } from '../../src/github/index.js'
-import { AIRouter, ClaudeWrapper, CodexWrapper, OllamaWrapper, MAPWrapper } from '../../src/ai/index.js'
+import { MAPWrapper } from '../../src/ai/index.js'
 import { StateManager, loadConfig } from '../../src/config/index.js'
 import { existsSync } from 'node:fs'
 
@@ -60,7 +61,6 @@ describe('CLI run()', () => {
     vi.mocked(existsSync).mockReturnValue(true)
     vi.mocked(loadConfig).mockReturnValue({
       repos: [{ owner: 'acme', name: 'api' }],
-      ollamaModel: 'qwen2.5-coder:latest',
       maxIssuesPerRun: 10,
     })
 
@@ -71,11 +71,15 @@ describe('CLI run()', () => {
       hasSeenStarPrompt: vi.fn().mockReturnValue(true),
       markStarPromptSeen: vi.fn(),
     }) as unknown as StateManager)
-    vi.mocked(ClaudeWrapper).mockImplementation(() => ({}) as unknown as ClaudeWrapper)
-    vi.mocked(CodexWrapper).mockImplementation(() => ({}) as unknown as CodexWrapper)
-    vi.mocked(OllamaWrapper).mockImplementation(() => ({}) as unknown as OllamaWrapper)
-    vi.mocked(MAPWrapper).mockImplementation(() => ({}) as unknown as MAPWrapper)
-    vi.mocked(AIRouter).mockImplementation(() => ({}) as unknown as AIRouter)
+    vi.mocked(MAPWrapper).mockImplementation(() => ({
+      model: 'map',
+      handlesFullPipeline: true,
+      invokeAgent: vi.fn(),
+      invokeStructured: vi.fn(),
+      detect: vi.fn(),
+    }) as unknown as MAPWrapper)
+    // Static detect method
+    ;(MAPWrapper as unknown as { detect: ReturnType<typeof vi.fn> }).detect = vi.fn().mockReturnValue({ available: true, version: '1.0.0' })
   })
 
   afterEach(() => {
@@ -105,25 +109,15 @@ describe('CLI run()', () => {
   })
 
   // -------------------------------------------------------------------------
-  // 2. repos.json not found at default path
+  // 2. No config file found
   // -------------------------------------------------------------------------
 
-  it('returns exit code 1 when config file not found at default path', async () => {
+  it('returns exit code 1 when no config file found and no --repo', async () => {
     vi.mocked(existsSync).mockReturnValue(false)
 
     const code = await run([])
 
     expect(code).toBe(1)
-  })
-
-  it('logs an error mentioning the config file path when not found', async () => {
-    vi.mocked(existsSync).mockReturnValue(false)
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    await run([])
-
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('./repos.json'))
-    spy.mockRestore()
   })
 
   // -------------------------------------------------------------------------
@@ -223,6 +217,89 @@ describe('CLI run()', () => {
   })
 
   // -------------------------------------------------------------------------
+  // --repo CLI mode
+  // -------------------------------------------------------------------------
+
+  it('runs pipeline when --repo is provided without config file', async () => {
+    vi.mocked(existsSync).mockReturnValue(false)
+    const runnerInstance = { run: vi.fn().mockResolvedValue(0) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    const code = await run(['--repo', 'acme/api'])
+
+    expect(code).toBe(0)
+    expect(PipelineRunner).toHaveBeenCalledOnce()
+    expect(loadConfig).not.toHaveBeenCalled()
+  })
+
+  it('returns exit code 1 when --repo and --config are both provided', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const code = await run(['--repo', 'acme/api', '--config', 'config.yaml'])
+
+    expect(code).toBe(1)
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('mutually exclusive'))
+    spy.mockRestore()
+  })
+
+  it('returns exit code 1 when --repo has invalid format', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const code = await run(['--repo', 'invalid-no-slash'])
+
+    expect(code).toBe(1)
+    spy.mockRestore()
+  })
+
+  it('passes --branch to config when provided', async () => {
+    const runnerInstance = { run: vi.fn().mockResolvedValue(0) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    await run(['--repo', 'acme/api', '--branch', 'develop'])
+
+    const configArg = vi.mocked(PipelineRunner).mock.calls[0]?.[0]
+    expect(configArg?.repos[0]?.defaultBranch).toBe('develop')
+  })
+
+  it('passes --max-issues to config when provided', async () => {
+    const runnerInstance = { run: vi.fn().mockResolvedValue(0) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    await run(['--repo', 'acme/api', '--max-issues', '5'])
+
+    const configArg = vi.mocked(PipelineRunner).mock.calls[0]?.[0]
+    expect(configArg?.maxIssuesPerRun).toBe(5)
+  })
+
+  it('returns exit code 1 when --max-issues is not a valid number', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const code = await run(['--repo', 'acme/api', '--max-issues', 'abc'])
+
+    expect(code).toBe(1)
+    spy.mockRestore()
+  })
+
+  it('passes --merge-method to config when provided', async () => {
+    const runnerInstance = { run: vi.fn().mockResolvedValue(0) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    await run(['--repo', 'acme/api', '--merge-method', 'squash'])
+
+    const configArg = vi.mocked(PipelineRunner).mock.calls[0]?.[0]
+    expect(configArg?.mergeMethod).toBe('squash')
+  })
+
+  it('returns exit code 1 when --merge-method is invalid', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const code = await run(['--repo', 'acme/api', '--merge-method', 'invalid'])
+
+    expect(code).toBe(1)
+    spy.mockRestore()
+  })
+
+  // -------------------------------------------------------------------------
   // Poll loop failsafes
   // -------------------------------------------------------------------------
 
@@ -231,7 +308,6 @@ describe('CLI run()', () => {
 
     vi.mocked(loadConfig).mockReturnValue({
       repos: [{ owner: 'acme', name: 'api' }],
-      ollamaModel: 'qwen2.5-coder:latest',
       maxIssuesPerRun: 10,
       maxPollRuns: 2,
     })
@@ -259,7 +335,6 @@ describe('CLI run()', () => {
 
     vi.mocked(loadConfig).mockReturnValue({
       repos: [{ owner: 'acme', name: 'api' }],
-      ollamaModel: 'qwen2.5-coder:latest',
       maxIssuesPerRun: 10,
       maxConsecutiveFailures: 3,
     })
@@ -289,7 +364,6 @@ describe('CLI run()', () => {
 
     vi.mocked(loadConfig).mockReturnValue({
       repos: [{ owner: 'acme', name: 'api' }],
-      ollamaModel: 'qwen2.5-coder:latest',
       maxIssuesPerRun: 10,
       maxPollRuns: 4,
       maxConsecutiveFailures: 3,

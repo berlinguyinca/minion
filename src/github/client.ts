@@ -305,4 +305,100 @@ export class GitHubClient {
       wrapError(err, owner, name)
     }
   }
+
+  async createIssue(
+    owner: string,
+    name: string,
+    title: string,
+    body: string,
+    labels?: string[],
+  ): Promise<{ number: number; url: string }> {
+    try {
+      const params: { owner: string; repo: string; title: string; body: string; labels?: string[] } = {
+        owner,
+        repo: name,
+        title,
+        body,
+      }
+      if (labels !== undefined) {
+        params.labels = labels
+      }
+      const response = await this.octokit.issues.create(params)
+      return {
+        number: response.data.number,
+        url: response.data.html_url,
+      }
+    } catch (err) {
+      wrapError(err, owner, name)
+    }
+  }
+
+  async fetchLabels(owner: string, name: string): Promise<string[]> {
+    const allLabels: string[] = []
+    let page = 1
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      try {
+        const response = await this.octokit.issues.listLabelsForRepo({
+          owner,
+          repo: name,
+          per_page: 100,
+          page,
+        })
+
+        for (const label of response.data) {
+          allLabels.push(label.name)
+        }
+
+        const linkHeader = (response.headers as Record<string, string | undefined>)['link']
+        hasNextPage = typeof linkHeader === 'string' && linkHeader.includes('rel="next"')
+        page++
+      } catch (err) {
+        wrapError(err, owner, name)
+      }
+    }
+
+    return allLabels.sort()
+  }
+
+  async listUserRepos(): Promise<Array<{ owner: string; name: string; description: string }>> {
+    const allRepos: Array<{ owner: string; name: string; description: string }> = []
+    let page = 1
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      try {
+        const response = await this.octokit.repos.listForAuthenticatedUser({
+          per_page: 100,
+          sort: 'updated',
+          affiliation: 'owner,collaborator,organization_member',
+          page,
+        })
+
+        for (const repo of response.data) {
+          allRepos.push({
+            owner: repo.owner.login,
+            name: repo.name,
+            description: repo.description ?? '',
+          })
+        }
+
+        const linkHeader = (response.headers as Record<string, string | undefined>)['link']
+        hasNextPage = typeof linkHeader === 'string' && linkHeader.includes('rel="next"')
+        page++
+      } catch (err) {
+        if (isOctokitError(err)) {
+          if (err.status === 401 || err.status === 403) {
+            throw new Error(
+              `GitHub authentication failed (HTTP ${err.status}). Check that GITHUB_TOKEN is valid and has the required scopes.`
+            )
+          }
+        }
+        throw err
+      }
+    }
+
+    return allRepos
+  }
 }
