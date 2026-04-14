@@ -13,7 +13,7 @@ function getHints(mode: string, inputMode: string, pane: string, commandBuffer: 
     return `:${commandBuffer}`
   }
 
-  const fieldLabel = formField === 'title' ? 'Title' : 'Body'
+  const fieldLabel = formField === 'title' ? 'Title' : formField === 'body' ? 'Body' : 'Comment'
 
   if (mode === 'insert') {
     if (pane === 'form') {

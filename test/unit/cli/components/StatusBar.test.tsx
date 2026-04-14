@@ -113,6 +113,13 @@ describe('StatusBar', () => {
       expect(lastFrame()).toContain('[Body]')
     })
 
+    it('shows [Comment] label when comment field is focused', () => {
+      const { lastFrame } = render(
+        <VimProvider formField="comment"><StatusBar repo="org/api" message="" /></VimProvider>
+      )
+      expect(lastFrame()).toContain('[Comment]')
+    })
+
     it('vim insert on form pane shows field label', () => {
       const { lastFrame, stdin } = render(
         <VimProvider initialInputMode="vim"><StatusBar repo="org/api" message="" /></VimProvider>
