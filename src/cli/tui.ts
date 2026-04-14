@@ -24,6 +24,8 @@ export interface TuiDeps {
     message: string
     choices: Array<{ name: string; value: T }>
   }) => Promise<T[]>
+  // AI polish (optional — hidden when MAP is unavailable)
+  polishText?: ((title: string, body: string) => Promise<{ title: string; body: string } | undefined>) | undefined
   // Config
   configRepos: Array<{ owner: string; name: string }>
   output: Pick<Console, 'log' | 'error'>
@@ -35,6 +37,7 @@ interface RepoChoice {
 }
 
 type PostSubmitAction = 'new-issue' | 'switch-repo' | 'quit'
+type DraftAction = 'submit' | 'polish' | 'edit-title' | 'edit-body'
 
 function nonEmpty(v: string): boolean | string {
   return v.trim().length > 0 || 'This field is required'
@@ -93,15 +96,60 @@ async function issueLoop(deps: TuiDeps, owner: string, name: string): Promise<Po
   }
 
   while (true) {
-    const title = await deps.promptInput({
+    let title = await deps.promptInput({
       message: 'Issue title',
       validate: nonEmpty,
     })
 
-    const body = await deps.promptInput({
+    let body = await deps.promptInput({
       message: 'Issue body',
       validate: nonEmpty,
     })
+
+    // Draft review loop — lets user polish/edit before submitting
+    let readyToSubmit = false
+    while (!readyToSubmit) {
+      const bodyPreview = body.split('\n').slice(0, 10).join('\n')
+      const truncated = body.split('\n').length > 10 ? '\n  ... (truncated)' : ''
+      deps.output.log(`\n--- Draft ---\nTitle: ${title}\nBody:  ${bodyPreview}${truncated}\n---`)
+
+      const draftChoices: Array<{ name: string; value: DraftAction }> = [
+        { name: 'Submit', value: 'submit' },
+      ]
+      if (deps.polishText !== undefined) {
+        draftChoices.push({ name: 'Polish with AI', value: 'polish' })
+      }
+      draftChoices.push(
+        { name: 'Edit title', value: 'edit-title' },
+        { name: 'Edit body', value: 'edit-body' },
+      )
+
+      const action = await deps.promptSearch<DraftAction>({
+        message: 'Review draft',
+        source: async () => draftChoices,
+      })
+
+      if (action === 'submit') {
+        readyToSubmit = true
+      } else if (action === 'polish' && deps.polishText !== undefined) {
+        try {
+          const polished = await deps.polishText(title, body)
+          if (polished !== undefined) {
+            title = polished.title
+            body = polished.body
+            deps.output.log('Polished successfully.')
+          } else {
+            deps.output.log('No changes suggested.')
+          }
+        } catch (err) {
+          deps.output.error(`Polish failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      } else if (action === 'edit-title') {
+        title = await deps.promptInput({ message: 'Issue title', validate: nonEmpty })
+      } else if (action === 'edit-body') {
+        body = await deps.promptInput({ message: 'Issue body', validate: nonEmpty })
+      }
+    }
 
     // Labels: multi-select from existing, skip with empty selection
     let selectedLabels: string[] = []
