@@ -59,9 +59,15 @@ mergeMethod: merge                # merge | squash | rebase (default: merge)
 mergeDraftPRs: false              # allow merging draft PRs (default: false)
 
 # Per-provider configuration
+# Each provider supports these timeout fields:
+#   timeoutMs            — general fallback for both structured and agent calls
+#   structuredTimeoutMs  — override timeout for invokeStructured calls only
+#   agentTimeoutMs       — override timeout for invokeAgent calls only
+# Resolution order: structuredTimeoutMs/agentTimeoutMs → timeoutMs → built-in default
 providers:
   map:
     timeoutMs: 120000
+    agentTimeoutMs: 1800000
     model: claude-sonnet-4-5
     quota: 50
     agents:
@@ -73,10 +79,15 @@ providers:
         adapter: claude
   claude:
     timeoutMs: 90000
+    structuredTimeoutMs: 300000
+    agentTimeoutMs: 1200000
     quota: 200
   codex:
     timeoutMs: 60000
+    structuredTimeoutMs: 120000
+    agentTimeoutMs: 1200000
     quota: 100
   ollama:
     timeoutMs: 300000
+    structuredTimeoutMs: 120000
     model: qwen2.5-coder:latest

@@ -67,7 +67,9 @@ export class MAPWrapper implements AIProvider {
 
     args.push(prompt)
 
-    const timeoutMs = this.config?.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS
+    const timeoutMs = this.config?.agentTimeoutMs
+      ?? this.config?.timeoutMs
+      ?? DEFAULT_AGENT_TIMEOUT_MS
 
     const { stdout } = await invokeProcess({
       command: 'map',

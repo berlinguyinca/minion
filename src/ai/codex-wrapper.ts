@@ -1,7 +1,7 @@
 import { invokeProcess } from './base-wrapper.js'
 import { scanModifiedFiles } from './file-scanner.js'
 import { AIInvocationError } from './errors.js'
-import type { AIProvider, AIModel, AgentResult, StructuredResult } from '../types/index.js'
+import type { AIProvider, AIModel, AgentResult, StructuredResult, ProviderConfig } from '../types/index.js'
 
 const DEFAULT_STRUCTURED_TIMEOUT_MS = 2 * 60 * 1000   // 2 minutes
 const DEFAULT_AGENT_TIMEOUT_MS     = 20 * 60 * 1000   // 20 minutes
@@ -44,20 +44,21 @@ export class CodexWrapper implements AIProvider {
   readonly model: AIModel = 'codex'
   readonly handlesFullPipeline = false
 
-  constructor(
-    private readonly structuredTimeoutMs = DEFAULT_STRUCTURED_TIMEOUT_MS,
-    private readonly agentTimeoutMs = DEFAULT_AGENT_TIMEOUT_MS
-  ) {}
+  constructor(private readonly config?: ProviderConfig) {}
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async invokeStructured<T>(prompt: string, schema: object, _modelOverride?: string): Promise<StructuredResult<T>> {
     const args = ['exec', '--json', JSON.stringify(schema), prompt]
 
     try {
+      const timeoutMs = this.config?.structuredTimeoutMs
+        ?? this.config?.timeoutMs
+        ?? DEFAULT_STRUCTURED_TIMEOUT_MS
+
       const { stdout } = await invokeProcess({
         command: 'codex',
         args,
-        timeoutMs: this.structuredTimeoutMs,
+        timeoutMs,
         model: 'codex',
       })
 
@@ -75,11 +76,15 @@ export class CodexWrapper implements AIProvider {
     const args = ['exec', '--json', '--full-auto', prompt]
     const beforeMs = Date.now()
 
+    const timeoutMs = this.config?.agentTimeoutMs
+      ?? this.config?.timeoutMs
+      ?? DEFAULT_AGENT_TIMEOUT_MS
+
     const { stdout, stderr } = await invokeProcess({
       command: 'codex',
       args,
       cwd: workingDir,
-      timeoutMs: this.agentTimeoutMs,
+      timeoutMs,
       model: 'codex',
     })
 

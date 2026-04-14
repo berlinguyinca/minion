@@ -98,12 +98,16 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
 
   const providerChain: AIModel[] = config.providerChain ?? ['claude', 'codex', 'ollama']
 
+  // Build OllamaWrapper config: providers.ollama takes precedence, ollamaModel is the deprecated fallback
+  const ollamaProviderConfig = config.providers?.['ollama']
+  const ollamaConfig = ollamaProviderConfig ?? (config.ollamaModel ? { model: config.ollamaModel } : undefined)
+
   // Only instantiate providers that are in the chain
   const providerFactories: Record<AIModel, () => AIProvider> = {
-    claude: () => new ClaudeWrapper(),
-    codex: () => new CodexWrapper(),
-    ollama: () => new OllamaWrapper(config.ollamaModel ?? 'qwen2.5-coder:latest'),
-    map: () => new MAPWrapper(),
+    claude: () => new ClaudeWrapper(config.providers?.['claude']),
+    codex: () => new CodexWrapper(config.providers?.['codex']),
+    ollama: () => new OllamaWrapper(ollamaConfig),
+    map: () => new MAPWrapper(config.providers?.['map']),
   }
 
   const providers: Partial<Record<AIModel, AIProvider>> = {}

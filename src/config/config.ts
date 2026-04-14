@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { readFileSync } from 'node:fs'
 import { parse as parseYAML } from 'yaml'
-import type { PipelineConfig, RepoConfig, PipelineTask, TaskModelConfig } from '../types/index.js'
+import type { PipelineConfig, ProviderConfig, RepoConfig, PipelineTask, TaskModelConfig } from '../types/index.js'
 
 const RepoConfigSchema = z.object({
   owner: z.string().min(1),
@@ -20,6 +20,21 @@ const TaskModelConfigSchema = z.object({
   model: z.string().optional(),
 })
 
+const AgentAdapterSchema = z.enum(['claude', 'codex', 'ollama'])
+
+const ProviderConfigSchema = z.object({
+  timeoutMs: z.number().positive().optional(),
+  structuredTimeoutMs: z.number().positive().optional(),
+  agentTimeoutMs: z.number().positive().optional(),
+  quota: z.number().int().positive().optional(),
+  model: z.string().optional(),
+  agents: z.object({
+    spec: z.object({ adapter: AgentAdapterSchema }).optional(),
+    review: z.object({ adapter: AgentAdapterSchema }).optional(),
+    execute: z.object({ adapter: AgentAdapterSchema }).optional(),
+  }).optional(),
+})
+
 const RetryConfigSchema = z.object({
   maxAttempts: z.number().int().positive().default(3),
   backoffMinutes: z.number().positive().default(60),
@@ -36,6 +51,7 @@ const PipelineConfigSchema = z.object({
     })
     .optional(),
   providerChain: z.array(AIModelSchema).optional(),
+  providers: z.record(z.string(), ProviderConfigSchema).optional(),
   taskModels: z.record(PipelineTaskSchema, TaskModelConfigSchema).optional(),
   retry: RetryConfigSchema.optional(),
   mergeCommentTrigger: z.string().default('/merge'),
@@ -67,6 +83,27 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
 
   if (parsed.providerChain !== undefined) {
     config.providerChain = parsed.providerChain
+  }
+
+  if (parsed.providers !== undefined) {
+    const providers: Partial<Record<string, ProviderConfig>> = {}
+    for (const [key, value] of Object.entries(parsed.providers)) {
+      const entry: ProviderConfig = {}
+      if (value.timeoutMs !== undefined) entry.timeoutMs = value.timeoutMs
+      if (value.structuredTimeoutMs !== undefined) entry.structuredTimeoutMs = value.structuredTimeoutMs
+      if (value.agentTimeoutMs !== undefined) entry.agentTimeoutMs = value.agentTimeoutMs
+      if (value.quota !== undefined) entry.quota = value.quota
+      if (value.model !== undefined) entry.model = value.model
+      if (value.agents !== undefined) {
+        const agents: NonNullable<ProviderConfig['agents']> = {}
+        if (value.agents.spec !== undefined) agents.spec = value.agents.spec
+        if (value.agents.review !== undefined) agents.review = value.agents.review
+        if (value.agents.execute !== undefined) agents.execute = value.agents.execute
+        entry.agents = agents
+      }
+      providers[key] = entry
+    }
+    config.providers = providers
   }
 
   if (parsed.taskModels !== undefined) {

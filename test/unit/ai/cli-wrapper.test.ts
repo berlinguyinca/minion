@@ -258,7 +258,7 @@ describe('OllamaWrapper', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    ollama = new OllamaWrapper('qwen2.5-coder:latest')
+    ollama = new OllamaWrapper({ model: 'qwen2.5-coder:latest' })
   })
 
   it('invokeStructured spawns ollama with model arg', async () => {
@@ -311,7 +311,7 @@ describe('timeout behavior', () => {
     proc.kill = () => true
     spawnMock.mockReturnValue(proc)
 
-    const claude = new ClaudeWrapper(50)
+    const claude = new ClaudeWrapper({ structuredTimeoutMs: 50 })
     await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
   }, 3000)
 
@@ -326,7 +326,7 @@ describe('timeout behavior', () => {
     proc.kill = () => true
     spawnMock.mockReturnValue(proc)
 
-    const codex = new CodexWrapper(50, 50)
+    const codex = new CodexWrapper({ structuredTimeoutMs: 50, agentTimeoutMs: 50 })
     await expect(codex.invokeAgent('prompt', '/tmp')).rejects.toThrow(AITimeoutError)
   }, 3000)
 
@@ -343,7 +343,7 @@ describe('timeout behavior', () => {
     }
     spawnMock.mockReturnValue(proc)
 
-    const claude = new ClaudeWrapper(50)
+    const claude = new ClaudeWrapper({ structuredTimeoutMs: 50 })
     await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
   }, 3000)
 })
@@ -535,7 +535,7 @@ describe('OllamaWrapper parse fallback branches', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    ollama = new OllamaWrapper('qwen2.5-coder:latest')
+    ollama = new OllamaWrapper({ model: 'qwen2.5-coder:latest' })
   })
 
   it('returns response field as-is when it is a plain string not JSON (lines 15-16)', async () => {
@@ -577,7 +577,7 @@ describe('OllamaWrapper invokeStructured non-Error catch', () => {
         throw 'ollama-string-error'
     })
 
-    const ollama = new OllamaWrapper('qwen2.5-coder:latest')
+    const ollama = new OllamaWrapper({ model: 'qwen2.5-coder:latest' })
     const result = await ollama.invokeStructured('prompt', {})
     expect(result.success).toBe(false)
     expect(result.error).toBe('ollama-string-error')
@@ -620,4 +620,235 @@ describe('base-wrapper branch coverage', () => {
     const claude = new ClaudeWrapper()
     await expect(claude.invokeStructured('p', {})).rejects.toThrow('stdout error info')
   })
+})
+
+// ---------------------------------------------------------------------------
+// ProviderConfig timeout resolution tests
+// ---------------------------------------------------------------------------
+
+describe('ClaudeWrapper timeout resolution via ProviderConfig', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses default timeouts when no config provided', async () => {
+    spawnMock.mockReturnValue(makeFakeProcess({ stdout: claudeStructuredFixture }))
+    const claude = new ClaudeWrapper()
+    await claude.invokeStructured('prompt', {})
+    expect(spawnMock).toHaveBeenCalledOnce()
+  })
+
+  it('structuredTimeoutMs overrides default for structured calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const claude = new ClaudeWrapper({ structuredTimeoutMs: 50 })
+    await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('agentTimeoutMs overrides default for agent calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const claude = new ClaudeWrapper({ agentTimeoutMs: 50 })
+    await expect(claude.invokeAgent('prompt', '/tmp')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('timeoutMs serves as general fallback for structured calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const claude = new ClaudeWrapper({ timeoutMs: 50 })
+    await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('timeoutMs serves as general fallback for agent calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const claude = new ClaudeWrapper({ timeoutMs: 50 })
+    await expect(claude.invokeAgent('prompt', '/tmp')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('structuredTimeoutMs takes precedence over timeoutMs for structured calls', async () => {
+    // structuredTimeoutMs = 50 (will timeout), timeoutMs = very large (would not timeout)
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const claude = new ClaudeWrapper({ timeoutMs: 999_999, structuredTimeoutMs: 50 })
+    await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('agentTimeoutMs takes precedence over timeoutMs for agent calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const claude = new ClaudeWrapper({ timeoutMs: 999_999, agentTimeoutMs: 50 })
+    await expect(claude.invokeAgent('prompt', '/tmp')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+})
+
+describe('CodexWrapper timeout resolution via ProviderConfig', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses default timeouts when no config provided', async () => {
+    spawnMock.mockReturnValue(makeFakeProcess({ stdout: codexFixture }))
+    const codex = new CodexWrapper()
+    await codex.invokeStructured('prompt', {})
+    expect(spawnMock).toHaveBeenCalledOnce()
+  })
+
+  it('structuredTimeoutMs overrides default for structured calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const codex = new CodexWrapper({ structuredTimeoutMs: 50 })
+    await expect(codex.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('agentTimeoutMs overrides default for agent calls', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const codex = new CodexWrapper({ agentTimeoutMs: 50 })
+    await expect(codex.invokeAgent('prompt', '/tmp')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('timeoutMs serves as general fallback', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const codex = new CodexWrapper({ timeoutMs: 50 })
+    await expect(codex.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('specific timeout overrides general timeoutMs', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const codex = new CodexWrapper({ timeoutMs: 999_999, agentTimeoutMs: 50 })
+    await expect(codex.invokeAgent('prompt', '/tmp')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+})
+
+describe('OllamaWrapper timeout resolution via ProviderConfig', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses default timeout when no config provided', async () => {
+    spawnMock.mockReturnValue(makeFakeProcess({ stdout: ollamaFixture }))
+    const ollama = new OllamaWrapper()
+    await ollama.invokeStructured('prompt', {})
+    expect(spawnMock).toHaveBeenCalledOnce()
+  })
+
+  it('reads model from config', async () => {
+    spawnMock.mockReturnValue(makeFakeProcess({ stdout: ollamaFixture }))
+    const ollama = new OllamaWrapper({ model: 'custom-model:latest' })
+    await ollama.invokeStructured('prompt', {})
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]]
+    expect(args).toContain('custom-model:latest')
+  })
+
+  it('defaults model to qwen2.5-coder:latest when no config', async () => {
+    spawnMock.mockReturnValue(makeFakeProcess({ stdout: ollamaFixture }))
+    const ollama = new OllamaWrapper()
+    await ollama.invokeStructured('prompt', {})
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]]
+    expect(args).toContain('qwen2.5-coder:latest')
+  })
+
+  it('structuredTimeoutMs overrides default', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const ollama = new OllamaWrapper({ structuredTimeoutMs: 50 })
+    await expect(ollama.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('timeoutMs serves as general fallback', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const ollama = new OllamaWrapper({ timeoutMs: 50 })
+    await expect(ollama.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('structuredTimeoutMs takes precedence over timeoutMs', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const ollama = new OllamaWrapper({ timeoutMs: 999_999, structuredTimeoutMs: 50 })
+    await expect(ollama.invokeStructured('prompt', {})).rejects.toThrow(AITimeoutError)
+  }, 3000)
 })

@@ -287,6 +287,37 @@ describe('MAPWrapper', () => {
     expect(writtenContent).toContain('codex')
   })
 
+  it('invokeAgent uses agentTimeoutMs over timeoutMs when both provided', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter
+      stderr: EventEmitter
+      kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    // agentTimeoutMs = 50 (will timeout), timeoutMs = very large (would not)
+    const mapWithAgentTimeout = new MAPWrapper({ timeoutMs: 999_999, agentTimeoutMs: 50 })
+    await expect(mapWithAgentTimeout.invokeAgent('prompt', '/tmp/workdir')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
+  it('invokeAgent uses timeoutMs as fallback when agentTimeoutMs not set', async () => {
+    const proc = new EventEmitter() as ChildProcess & {
+      stdout: EventEmitter
+      stderr: EventEmitter
+      kill: () => boolean
+    }
+    proc.stdout = new EventEmitter()
+    proc.stderr = new EventEmitter()
+    proc.kill = () => true
+    spawnMock.mockReturnValue(proc)
+
+    const mapWithTimeout = new MAPWrapper({ timeoutMs: 50 })
+    await expect(mapWithTimeout.invokeAgent('prompt', '/tmp/workdir')).rejects.toThrow(AITimeoutError)
+  }, 3000)
+
   describe('detect', () => {
     it('returns available=true with version when map binary exists', () => {
       execFileSyncMock.mockReturnValue('0.1.0\n')
