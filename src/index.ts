@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline'
 import { execFile, execSync } from 'node:child_process'
 import { platform } from 'node:os'
 import { GitHubClient } from './github/index.js'
-import { MAPWrapper } from './ai/index.js'
+import { MAPWrapper, polishIssueText } from './ai/index.js'
 import { StateManager, loadConfig } from './config/index.js'
 import { PipelineRunner } from './pipeline/index.js'
 import type { PipelineConfig, RepoConfig } from './types/index.js'
@@ -207,11 +207,13 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
     }
 
     const github = new GitHubClient(token)
+    const mapAvailable = MAPWrapper.detect().available
     const { runTui } = await import('./cli/tui.js')
     return runTui({
       listUserRepos: () => github.listUserRepos(),
       fetchLabels: (o, n) => github.fetchLabels(o, n),
       createIssue: (o, n, t, b, l) => github.createIssue(o, n, t, b, l),
+      polishText: mapAvailable ? (t, b) => polishIssueText(t, b) : undefined,
       promptSearch: (await import('@inquirer/search')).default,
       promptInput: (await import('@inquirer/input')).default,
       promptCheckbox: (await import('@inquirer/checkbox')).default,
