@@ -436,4 +436,27 @@ describe('StateManager', () => {
       expect(sm.getPRAttemptCount('owner/repo', 5)).toBe(3)
     })
   })
+
+  describe('getInputMode / setInputMode', () => {
+    it('returns basic by default', () => {
+      const sm = new StateManager(makeTempStatePath())
+      expect(sm.getInputMode()).toBe('basic')
+    })
+
+    it('persists vim mode', () => {
+      const statePath = makeTempStatePath()
+      const sm = new StateManager(statePath)
+      sm.setInputMode('vim')
+      expect(sm.getInputMode()).toBe('vim')
+    })
+
+    it('round-trip: set vim, new instance returns vim', () => {
+      const statePath = makeTempStatePath()
+      const sm1 = new StateManager(statePath)
+      sm1.setInputMode('vim')
+
+      const sm2 = new StateManager(statePath)
+      expect(sm2.getInputMode()).toBe('vim')
+    })
+  })
 })

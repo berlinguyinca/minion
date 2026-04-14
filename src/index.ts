@@ -208,6 +208,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
 
     const github = new GitHubClient(token)
     const mapAvailable = MAPWrapper.detect().available
+    const tuiState = new StateManager('.pipeline-state.json')
     const { runTui } = await import('./cli/tui.js')
     return runTui({
       listUserRepos: () => github.listUserRepos(),
@@ -221,6 +222,8 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       updateIssue: (o, n, num, t, b) => github.updateIssue(o, n, num, t, b),
       polishText: mapAvailable ? (t, b) => polishIssueText(t, b) : undefined,
       configRepos,
+      getInputMode: () => tuiState.getInputMode(),
+      setInputMode: (mode) => tuiState.setInputMode(mode),
     })
   }
 

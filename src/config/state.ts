@@ -60,6 +60,7 @@ export class StateManager {
       processedIssues: Record<string, unknown>
       reviewedPRs?: PipelineState['reviewedPRs']
       starPromptSeen?: boolean
+      inputMode?: 'vim' | 'basic'
     }
 
     const state: PipelineState = {
@@ -70,6 +71,9 @@ export class StateManager {
     }
     if (parsed.starPromptSeen !== undefined) {
       state.starPromptSeen = parsed.starPromptSeen
+    }
+    if (parsed.inputMode !== undefined) {
+      state.inputMode = parsed.inputMode
     }
 
     return state
@@ -125,6 +129,17 @@ export class StateManager {
   markStarPromptSeen(): void {
     const state = this.load()
     state.starPromptSeen = true
+    this.save(state)
+  }
+
+  getInputMode(): 'vim' | 'basic' {
+    const state = this.load()
+    return state.inputMode ?? 'basic'
+  }
+
+  setInputMode(mode: 'vim' | 'basic'): void {
+    const state = this.load()
+    state.inputMode = mode
     this.save(state)
   }
 

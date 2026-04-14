@@ -70,6 +70,7 @@ export interface PipelineState {
   processedIssues: Record<string, Record<number, IssueOutcome>>; // "owner/name" -> { issueNumber: outcome }
   reviewedPRs?: Record<string, Record<number, PROutcome>>;      // "owner/name" -> { prNumber: outcome }
   starPromptSeen?: boolean;
+  inputMode?: 'vim' | 'basic';
 }
 
 export type AIModel = "map";

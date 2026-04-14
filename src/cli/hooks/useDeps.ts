@@ -9,6 +9,8 @@ export interface TuiDeps {
   updateIssue: (owner: string, name: string, number: number, title: string, body: string) => Promise<void>
   polishText?: ((title: string, body: string) => Promise<{ title: string; body: string } | undefined>) | undefined
   configRepos: Array<{ owner: string; name: string }>
+  getInputMode: () => 'vim' | 'basic'
+  setInputMode: (mode: 'vim' | 'basic') => void
 }
 
 export const DepsContext = createContext<TuiDeps | null>(null)

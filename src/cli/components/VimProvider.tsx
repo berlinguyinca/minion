@@ -1,40 +1,53 @@
 import React, { useState, useCallback, useRef, useLayoutEffect, type ReactNode } from 'react'
 import { useStdin } from 'ink'
-import { VimContext, type VimMode, type Pane, type FormField } from '../hooks/useVim.js'
+import { VimContext, type VimMode, type Pane, type FormField, type InputMode } from '../hooks/useVim.js'
 
 export interface VimProviderProps {
   children: ReactNode
   onAction?: (action: string) => void
   onCommand?: (command: string) => void
+  initialInputMode?: InputMode
 }
 
 const DOUBLE_KEY_TIMEOUT_MS = 500
 
 // Parse a raw input chunk into its meaningful parts
-function parseChunk(chunk: string): { input: string; escape: boolean; enter: boolean; backspace: boolean; tab: boolean; shiftTab: boolean } {
+function parseChunk(chunk: string): {
+  input: string; escape: boolean; enter: boolean; backspace: boolean
+  tab: boolean; shiftTab: boolean; ctrlV: boolean
+  arrowUp: boolean; arrowDown: boolean; arrowLeft: boolean; arrowRight: boolean
+} {
   const escape = chunk === '\x1B'
   const enter = chunk === '\r' || chunk === '\n'
   const backspace = chunk === '\x7F' || chunk === '\b'
   const tab = chunk === '\t'
   const shiftTab = chunk === '\x1B[Z'
+  const ctrlV = chunk === '\x16'
+  const arrowUp = chunk === '\x1B[A'
+  const arrowDown = chunk === '\x1B[B'
+  const arrowRight = chunk === '\x1B[C'
+  const arrowLeft = chunk === '\x1B[D'
   // For regular printable input, use the chunk as-is (single char or sequence)
-  const input = (escape || enter || backspace || tab || shiftTab) ? '' : chunk
-  return { input, escape, enter, backspace, tab, shiftTab }
+  const isSpecial = escape || enter || backspace || tab || shiftTab || ctrlV || arrowUp || arrowDown || arrowLeft || arrowRight
+  const input = isSpecial ? '' : chunk
+  return { input, escape, enter, backspace, tab, shiftTab, ctrlV, arrowUp, arrowDown, arrowLeft, arrowRight }
 }
 
-export function VimProvider({ children, onAction, onCommand }: VimProviderProps): React.JSX.Element {
+export function VimProvider({ children, onAction, onCommand, initialInputMode }: VimProviderProps): React.JSX.Element {
   const [mode, setMode] = useState<VimMode>('normal')
   const [pane, setPane] = useState<Pane>('form')
   const [formField, setFormField] = useState<FormField>('title')
   const [commandBuffer, setCommandBuffer] = useState('')
+  const [inputMode, setInputMode] = useState<InputMode>(initialInputMode ?? 'basic')
 
   // For double-key sequences (gg, dd)
   const lastKeyRef = useRef<string | null>(null)
   const lastKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Use refs for mode/commandBuffer so the stable handler can read current values
+  // Use refs for mode/commandBuffer/inputMode so the stable handler can read current values
   const modeRef = useRef<VimMode>('normal')
   const commandBufferRef = useRef('')
+  const inputModeRef = useRef<InputMode>(initialInputMode ?? 'basic')
 
   const togglePane = useCallback((): void => {
     setPane((p) => (p === 'form' ? 'table' : 'form'))
@@ -44,6 +57,11 @@ export function VimProvider({ children, onAction, onCommand }: VimProviderProps)
   const setModeSync = useCallback((m: VimMode): void => {
     modeRef.current = m
     setMode(m)
+  }, [])
+
+  const setInputModeSync = useCallback((m: InputMode): void => {
+    inputModeRef.current = m
+    setInputMode(m)
   }, [])
 
   const setCommandBufferSync = useCallback((buf: string | ((prev: string) => string)): void => {
@@ -212,11 +230,13 @@ export function VimProvider({ children, onAction, onCommand }: VimProviderProps)
     pane,
     formField,
     commandBuffer,
+    inputMode,
     setMode: setModeSync,
     setPane,
     setFormField,
     setCommandBuffer: (buf: string) => setCommandBufferSync(buf),
     togglePane,
+    setInputMode: setInputModeSync,
   }
 
   return (
