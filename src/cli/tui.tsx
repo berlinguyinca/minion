@@ -386,7 +386,6 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
             <HelpOverlay />
           ) : (
             <SplitPane
-              isWide={editingIssue !== undefined}
               left={
                 <IssueForm
                   title={title}
