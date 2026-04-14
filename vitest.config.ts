@@ -15,7 +15,7 @@ export default defineConfig({
       },
       include: [
         "src/ai/**/*.ts",
-        "src/cli/tui.ts",
+        "src/cli/**/*.{ts,tsx}",
         "src/config/**/*.ts",
         "src/git/**/*.ts",
         "src/github/**/*.ts",

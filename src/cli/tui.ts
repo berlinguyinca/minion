@@ -9,18 +9,18 @@ export interface TuiDeps {
     body: string,
     labels: string[],
   ) => Promise<{ number: number; url: string }>
-  // Prompt layer
-  promptSearch: <T>(config: {
+  // Prompt layer (optional — will be provided by Ink TUI in Task 2)
+  promptSearch?: <T>(config: {
     message: string
     source: (
       term: string | undefined,
     ) => Promise<Array<{ name: string; value: T }>>
   }) => Promise<T>
-  promptInput: (config: {
+  promptInput?: (config: {
     message: string
     validate?: (v: string) => boolean | string
   }) => Promise<string>
-  promptCheckbox: <T>(config: {
+  promptCheckbox?: <T>(config: {
     message: string
     choices: Array<{ name: string; value: T }>
   }) => Promise<T[]>
@@ -49,7 +49,7 @@ async function selectRepo(deps: TuiDeps, cachedApiRepos: RepoChoice[]): Promise<
     value: { owner: r.owner, name: r.name } satisfies RepoChoice,
   }))
 
-  return deps.promptSearch<RepoChoice>({
+  return deps.promptSearch!<RepoChoice>({
     message: 'Select a repository',
     source: async (term) => {
       const allChoices = [
@@ -96,12 +96,12 @@ async function issueLoop(deps: TuiDeps, owner: string, name: string): Promise<Po
   }
 
   while (true) {
-    let title = await deps.promptInput({
+    let title = await deps.promptInput!({
       message: 'Issue title',
       validate: nonEmpty,
     })
 
-    let body = await deps.promptInput({
+    let body = await deps.promptInput!({
       message: 'Issue body',
       validate: nonEmpty,
     })
@@ -124,7 +124,7 @@ async function issueLoop(deps: TuiDeps, owner: string, name: string): Promise<Po
         { name: 'Edit body', value: 'edit-body' },
       )
 
-      const action = await deps.promptSearch<DraftAction>({
+      const action = await deps.promptSearch!<DraftAction>({
         message: 'Review draft',
         source: async () => draftChoices,
       })
@@ -145,16 +145,16 @@ async function issueLoop(deps: TuiDeps, owner: string, name: string): Promise<Po
           deps.output.error(`Polish failed: ${err instanceof Error ? err.message : String(err)}`)
         }
       } else if (action === 'edit-title') {
-        title = await deps.promptInput({ message: 'Issue title', validate: nonEmpty })
+        title = await deps.promptInput!({ message: 'Issue title', validate: nonEmpty })
       } else if (action === 'edit-body') {
-        body = await deps.promptInput({ message: 'Issue body', validate: nonEmpty })
+        body = await deps.promptInput!({ message: 'Issue body', validate: nonEmpty })
       }
     }
 
     // Labels: multi-select from existing, skip with empty selection
     let selectedLabels: string[] = []
     if (labels.length > 0) {
-      selectedLabels = await deps.promptCheckbox<string>({
+      selectedLabels = await deps.promptCheckbox!<string>({
         message: 'Labels (Enter to skip)',
         choices: labels.map((l) => ({ name: l, value: l })),
       })
@@ -170,7 +170,7 @@ async function issueLoop(deps: TuiDeps, owner: string, name: string): Promise<Po
     }
 
     // Post-submit menu
-    const action = await deps.promptSearch<PostSubmitAction>({
+    const action = await deps.promptSearch!<PostSubmitAction>({
       message: 'What next?',
       source: async () => [
         { name: 'New issue (same repo)', value: 'new-issue' as const },

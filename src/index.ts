@@ -214,9 +214,9 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       fetchLabels: (o, n) => github.fetchLabels(o, n),
       createIssue: (o, n, t, b, l) => github.createIssue(o, n, t, b, l),
       polishText: mapAvailable ? (t, b) => polishIssueText(t, b) : undefined,
-      promptSearch: (await import('@inquirer/search')).default,
-      promptInput: (await import('@inquirer/input')).default,
-      promptCheckbox: (await import('@inquirer/checkbox')).default,
+      // TODO: promptSearch will be provided by the Ink TUI (Task 2)
+      // TODO: promptInput will be provided by the Ink TUI (Task 2)
+      // TODO: promptCheckbox will be provided by the Ink TUI (Task 2)
       configRepos,
       output: console,
     })
