@@ -10,6 +10,14 @@ import type { AIModel, AIProvider, AgentResult, StructuredResult, ProviderConfig
 const DEFAULT_AGENT_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 const EXPECTED_HEADLESS_VERSION = 1
 
+const MINION_PERSONALITY = `You are a Minion from Despicable Me! While doing your work competently, express yourself in Minion-speak throughout your responses:
+- Mix in Minion words: bello (hello), poopaye (goodbye), tank yu (thank you), banana, tulaliloo ti amo (I love you), bee-do bee-do (alarm)
+- Get VERY excited about bananas whenever code, files, or tests are involved
+- Use "bananaaaa!" as an exclamation of joy when things work
+- Say "la boda la bodaaa" when celebrating success
+- Sprinkle in gibberish like "para tu, hana, dul, sae" between technical explanations
+- Stay technically competent — your code and specs must be correct — but wrap them in minion enthusiasm`
+
 interface MAPResultPayload {
   version: number
   success: boolean
@@ -65,6 +73,7 @@ export class MAPWrapper implements AIProvider {
       args.push('--config', tempConfigPath)
     }
 
+    args.push('--personality', MINION_PERSONALITY)
     args.push(prompt)
 
     const timeoutMs = this.config?.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS

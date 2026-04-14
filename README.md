@@ -1,4 +1,4 @@
-# gh-issue-pipeline
+# minion
 
 Autonomous pipeline that reads open GitHub issues and turns them into pull requests using AI. Point it at your repos, and it will generate specs, write code, run tests, open PRs, self-review, and address its own review comments -- all without human intervention.
 
@@ -14,8 +14,8 @@ Safe to run on a cron schedule: tracks processed issues and monthly AI quota in 
 ## Quick start
 
 ```bash
-git clone https://github.com/berlinguyinca/gh-issue-pipeline.git
-cd gh-issue-pipeline
+git clone https://github.com/berlinguyinca/minion.git
+cd minion
 pnpm install
 
 # Copy and edit the config
@@ -35,7 +35,7 @@ GITHUB_TOKEN=ghp_xxxx pnpm start --config /path/to/config.yaml
 ### Cron example (every 4 hours)
 
 ```cron
-0 */4 * * * cd /path/to/gh-issue-pipeline && GITHUB_TOKEN=ghp_... pnpm start --config config.yaml >> /var/log/gh-pipeline.log 2>&1
+0 */4 * * * cd /path/to/minion && GITHUB_TOKEN=ghp_... pnpm start --config config.yaml >> /var/log/minion.log 2>&1
 ```
 
 ## How it works
@@ -292,7 +292,7 @@ test/
 - ESM-only (`"type": "module"`) -- all imports must include `.js` extensions
 - TypeScript strict mode with `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noPropertyAccessFromIndexSignature`
 - Coverage thresholds: 80% statements, branches, functions, and lines
-- Git identity is auto-configured in cloned repos (`pipeline@gh-issue-pipeline`) for CI environments where git config is unset
+- Git identity is auto-configured in cloned repos (`pipeline@minion`) for CI environments where git config is unset
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
-# gh-issue-pipeline — Wiki
+# minion — Wiki
 
-_Generated 2026-04-13 — re-run `npx codesight --wiki` if the codebase has changed._
+_Generated 2026-04-14 — re-run `npx codesight --wiki` if the codebase has changed._
 
 Structural map compiled from source code via AST. No LLM — deterministic, 200ms.
 
@@ -43,4 +43,4 @@ These exist in your codebase but are **not** reflected in wiki articles:
 When in doubt, search the source. The wiki is a starting point, not a complete inventory.
 
 ---
-_Last compiled: 2026-04-13 · 4 articles · [codesight](https://github.com/Houseofmvps/codesight)_
+_Last compiled: 2026-04-14 · 4 articles · [codesight](https://github.com/Houseofmvps/codesight)_

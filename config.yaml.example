@@ -1,4 +1,4 @@
-# gh-issue-pipeline configuration
+# minion configuration
 # Copy to config.yaml and adjust to your needs.
 # The pipeline also accepts repos.json for backward compatibility.
 

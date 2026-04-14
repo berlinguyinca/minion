@@ -41,6 +41,8 @@ const PipelineConfigSchema = z.object({
   mergeCommentTrigger: z.string().default('/merge'),
   mergeMethod: z.enum(['merge', 'squash', 'rebase']).default('merge'),
   mergeDraftPRs: z.boolean().default(false),
+  autoMerge: z.boolean().default(true),
+  autoMergeRequireTests: z.boolean().default(true),
 })
 
 type ZodParsed = z.infer<typeof PipelineConfigSchema>
@@ -93,6 +95,14 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
 
   if (parsed.mergeDraftPRs) {
     config.mergeDraftPRs = parsed.mergeDraftPRs
+  }
+
+  if (!parsed.autoMerge) {
+    config.autoMerge = parsed.autoMerge
+  }
+
+  if (!parsed.autoMergeRequireTests) {
+    config.autoMergeRequireTests = parsed.autoMergeRequireTests
   }
 
   return config

@@ -43,6 +43,14 @@ export interface RetryConfig {
   backoffMinutes: number
 }
 
+export interface SecurityIssue {
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  file: string
+  line: number
+  description: string
+  suggestedFix: string
+}
+
 export interface PipelineConfig {
   repos: RepoConfig[];
   ollamaModel?: string;
@@ -58,6 +66,8 @@ export interface PipelineConfig {
   mergeCommentTrigger?: string;
   mergeMethod?: 'merge' | 'squash' | 'rebase';
   mergeDraftPRs?: boolean;
+  autoMerge?: boolean;
+  autoMergeRequireTests?: boolean;
 }
 
 export interface QuotaState {

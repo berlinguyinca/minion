@@ -1,10 +1,10 @@
-# gh-issue-pipeline — AI Context Map
+# minion — AI Context Map
 
 > **Stack:** raw-http | none | unknown | typescript
 
 > 2 routes (2 inferred) | 0 models | 0 components | 19 lib files | 1 env vars | 0 middleware | 100% test coverage
-> **Token savings:** this file is ~1,600 tokens. Without it, AI exploration would cost ~15,200 tokens. **Saves ~13,600 tokens per conversation.**
-> **Last scanned:** 2026-04-13 19:41 — re-run after significant changes
+> **Token savings:** this file is ~1,700 tokens. Without it, AI exploration would cost ~15,200 tokens. **Saves ~13,600 tokens per conversation.**
+> **Last scanned:** 2026-04-14 00:19 — re-run after significant changes
 
 ---
 
@@ -42,7 +42,7 @@
   - class GitHubClient
   - interface CreatePRParams
   - interface PRResult
-- `src/index.ts` — function run: (argv) => void
+- `src/index.ts` — function showStarPrompt: (state) => Promise<void>, function run: (argv) => void
 - `src/pipeline/issue-processor.ts` — class IssueProcessor
 - `src/pipeline/merge-processor.ts` — class MergeProcessor
 - `src/pipeline/prompts.ts`

@@ -1,5 +1,5 @@
 {
-  "name": "gh-issue-pipeline",
+  "name": "minion",
   "version": "0.1.0",
   "description": "Autonomous GitHub issue implementation pipeline",
   "type": "module",

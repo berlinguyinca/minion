@@ -33,7 +33,7 @@ export async function showStarPrompt(state: StateManager): Promise<void> {
     return
   }
 
-  console.log('\n\u2B50 If you find gh-issue-pipeline useful, consider starring the repo!')
+  console.log('\n\u2B50 If you find minion useful, consider starring the repo!')
   const rl = createInterface({ input: process.stdin, output: process.stdout })
 
   return new Promise<void>((resolve) => {
@@ -63,7 +63,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
   })
 
   if (values.help) {
-    console.log(`Usage: gh-issue-pipeline [--config <path>] [--poll <seconds>]`)
+    console.log(`Usage: minion [--config <path>] [--poll <seconds>]`)
     console.log(`  --config <path>     Config file (default: ./repos.json)`)
     console.log(`  --poll <seconds>    Continuous polling mode (min: ${MIN_POLL_SECONDS}s)`)
     return 0
