@@ -46,6 +46,8 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
   const [selectedLabels, setSelectedLabels] = useState<string[]>([])
   const [editingIssue, setEditingIssue] = useState<number | undefined>(undefined)
   const [formField, setFormField] = useState<FormField>('title')
+  const [comments, setComments] = useState<Array<{ author: string; body: string; createdAt: string }>>([])
+  const [commentText, setCommentText] = useState('')
 
   // Table state
   const [openIssues, setOpenIssues] = useState<Array<{ number: number; title: string; labels: string[] }>>([])
@@ -71,6 +73,8 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
   const tableCursorRef = useRef(tableCursor)
   const tableTabRef = useRef(tableTab)
   const paneRef = useRef(pane)
+  const commentsRef = useRef(comments)
+  const commentTextRef = useRef(commentText)
 
   selectedRepoRef.current = selectedRepo
   titleRef.current = title
@@ -83,6 +87,8 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
   tableCursorRef.current = tableCursor
   tableTabRef.current = tableTab
   paneRef.current = pane
+  commentsRef.current = comments
+  commentTextRef.current = commentText
 
   // Show a transient message (auto-clears after 3s)
   const messageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -183,6 +189,8 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
     setBody('')
     setSelectedLabels([])
     setEditingIssue(undefined)
+    setComments([])
+    setCommentText('')
   }, [])
 
   // Handle vim : commands
@@ -191,6 +199,32 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
     if (!repo) return
 
     if (cmd === 'w') {
+      const currentFormField = formFieldRef.current
+      if (currentFormField === 'comment') {
+        void (async () => {
+          try {
+            const editing = editingIssueRef.current
+            const currentComment = commentTextRef.current.trim()
+            if (!currentComment) {
+              showMessage(messages.error('Comment is empty'), 'error')
+              return
+            }
+            if (editing === undefined || !repo) return
+            await deps.postIssueComment(repo.owner, repo.name, editing, currentComment)
+            setCommentText('')
+            showMessage('Comment added', 'success')
+            try {
+              const refreshed = await deps.listIssueComments(repo.owner, repo.name, editing)
+              setComments(refreshed)
+            } catch {
+              // Non-fatal
+            }
+          } catch (err) {
+            showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+          }
+        })()
+        return
+      }
       void (async () => {
         try {
           const currentTitle = titleRef.current.trim()
@@ -253,6 +287,35 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
     } else if (cmd === 'repo') {
       clearForm()
       setScreen('repo-select')
+    } else if (cmd === 'close') {
+      const editing = editingIssueRef.current
+      if (editing === undefined) {
+        showMessage(messages.error('No issue loaded'), 'error')
+        return
+      }
+      void (async () => {
+        try {
+          await deps.closeIssue(repo.owner, repo.name, editing)
+          showMessage(`Issue #${editing} closed`, 'success')
+          clearForm()
+          try {
+            const issues = await deps.fetchOpenIssues(repo.owner, repo.name)
+            setOpenIssues(issues)
+          } catch {
+            // Non-fatal
+          }
+        } catch (err) {
+          showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+        }
+      })()
+    } else if (cmd === 'comment') {
+      const editing = editingIssueRef.current
+      if (editing === undefined) {
+        showMessage(messages.error('No issue loaded'), 'error')
+        return
+      }
+      setFormField('comment')
+      setPane('form')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deps, app, clearForm, showMessage])
@@ -269,13 +332,23 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
           return items.length === 0 ? 0 : Math.min(c + 1, items.length - 1)
         })
       } else {
-        setFormField((f) => (f === 'title' ? 'body' : 'title'))
+        const hasComment = editingIssueRef.current !== undefined
+        setFormField((f) => {
+          if (f === 'title') return 'body'
+          if (f === 'body') return hasComment ? 'comment' : 'title'
+          return 'title'
+        })
       }
     } else if (action === 'move-up') {
       if (currentPane === 'table') {
         setTableCursor((c) => Math.max(0, c - 1))
       } else {
-        setFormField((f) => (f === 'body' ? 'title' : 'body'))
+        const hasComment = editingIssueRef.current !== undefined
+        setFormField((f) => {
+          if (f === 'title') return hasComment ? 'comment' : 'body'
+          if (f === 'body') return 'title'
+          return 'body'
+        })
       }
     } else if (action === 'move-left') {
       setPane('form')
@@ -310,6 +383,13 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
             setBody(detail.body)
             setEditingIssue(detail.number)
             setPane('form')
+            // Fetch comments
+            try {
+              const fetchedComments = await deps.listIssueComments(repo.owner, repo.name, detail.number)
+              setComments(fetchedComments)
+            } catch {
+              setComments([])
+            }
           } catch (err) {
             showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
           }
@@ -355,6 +435,36 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
       else if (field === 'body') setBody('')
     } else if (action === 'help') {
       setShowHelp((h) => !h)
+    } else if (action === 'close-issue') {
+      const editing = editingIssueRef.current
+      const repo = selectedRepoRef.current
+      if (editing === undefined || !repo) {
+        showMessage(messages.error('No issue loaded'), 'error')
+        return
+      }
+      void (async () => {
+        try {
+          await deps.closeIssue(repo.owner, repo.name, editing)
+          showMessage(`Issue #${editing} closed`, 'success')
+          clearForm()
+          try {
+            const issues = await deps.fetchOpenIssues(repo.owner, repo.name)
+            setOpenIssues(issues)
+          } catch {
+            // Non-fatal
+          }
+        } catch (err) {
+          showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+        }
+      })()
+    } else if (action === 'focus-comment') {
+      const editing = editingIssueRef.current
+      if (editing === undefined) {
+        showMessage(messages.error('No issue loaded'), 'error')
+        return
+      }
+      setFormField('comment')
+      setPane('form')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deps, clearForm, showMessage])
@@ -396,6 +506,9 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
                   active={pane === 'form'}
                   editingIssue={editingIssue}
                   formField={formField}
+                  comments={comments}
+                  commentText={commentText}
+                  onCommentChange={setCommentText}
                 />
               }
               right={
