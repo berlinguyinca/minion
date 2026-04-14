@@ -53,8 +53,9 @@ export function IssueForm({
   comments, commentText, onCommentChange, commentsExpanded,
 }: IssueFormProps): React.JSX.Element {
   const { stdout } = useStdout()
-  // Left pane is ~60% of terminal, minus borders(2), padding(2), indent(2), safety buffer(4)
-  const commentMaxWidth = Math.floor((stdout?.columns ?? 120) * 0.6) - 12
+  const cols = stdout?.columns ?? 120
+  // Left pane gets exactly 60% of terminal. Subtract: borders(2), paddingX(2), comment indent(2), buffer(2)
+  const commentMaxWidth = Math.floor(cols * 0.6) - 8
   const borderColor = active ? colors.overalls : colors.dim
 
   const header = editingIssue !== undefined
