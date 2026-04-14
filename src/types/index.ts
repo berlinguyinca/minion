@@ -22,6 +22,8 @@ export interface RepoConfig {
 
 export interface ProviderConfig {
   timeoutMs?: number;
+  structuredTimeoutMs?: number;
+  agentTimeoutMs?: number;
   quota?: number;
   model?: string;
   agents?: {
