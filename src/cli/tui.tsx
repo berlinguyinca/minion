@@ -1,0 +1,377 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { render, Box, useApp } from 'ink'
+import { VimProvider } from './components/VimProvider.js'
+import { RepoSelector } from './components/RepoSelector.js'
+import { IssueForm } from './components/IssueForm.js'
+import { IssueTable } from './components/IssueTable.js'
+import { StatusBar } from './components/StatusBar.js'
+import { MessageToast } from './components/MessageToast.js'
+import { SplitPane } from './components/SplitPane.js'
+import { DepsContext, type TuiDeps } from './hooks/useDeps.js'
+import { messages } from './theme.js'
+import type { Pane } from './hooks/useVim.js'
+
+export type { TuiDeps } from './hooks/useDeps.js'
+
+type Screen = 'repo-select' | 'main'
+type TableTab = 'open' | 'recent'
+
+interface RecentIssue {
+  number: number
+  title: string
+  repo: string
+}
+
+interface RepoChoice {
+  owner: string
+  name: string
+}
+
+function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
+  const app = useApp()
+
+  // Screen routing
+  const [screen, setScreen] = useState<Screen>('repo-select')
+  const [repos, setRepos] = useState<RepoChoice[]>([])
+  const [selectedRepo, setSelectedRepo] = useState<RepoChoice | null>(null)
+
+  // Form state
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [labels, setLabels] = useState<string[]>([])
+  const [editingIssue, setEditingIssue] = useState<number | undefined>(undefined)
+
+  // Table state
+  const [openIssues, setOpenIssues] = useState<Array<{ number: number; title: string; labels: string[] }>>([])
+  const [recentIssues, setRecentIssues] = useState<RecentIssue[]>([])
+  const [tableCursor, setTableCursor] = useState(0)
+  const [tableTab, setTableTab] = useState<TableTab>('open')
+
+  // UI state
+  const [pane, setPane] = useState<Pane>('form')
+  const [statusMessage, setStatusMessage] = useState('')
+  const [messageVariant, setMessageVariant] = useState<'success' | 'error' | undefined>(undefined)
+
+  // Refs for stable closures
+  const selectedRepoRef = useRef(selectedRepo)
+  const titleRef = useRef(title)
+  const bodyRef = useRef(body)
+  const labelsRef = useRef(labels)
+  const editingIssueRef = useRef(editingIssue)
+  const openIssuesRef = useRef(openIssues)
+  const recentIssuesRef = useRef(recentIssues)
+  const tableCursorRef = useRef(tableCursor)
+  const tableTabRef = useRef(tableTab)
+  const paneRef = useRef(pane)
+
+  selectedRepoRef.current = selectedRepo
+  titleRef.current = title
+  bodyRef.current = body
+  labelsRef.current = labels
+  editingIssueRef.current = editingIssue
+  openIssuesRef.current = openIssues
+  recentIssuesRef.current = recentIssues
+  tableCursorRef.current = tableCursor
+  tableTabRef.current = tableTab
+  paneRef.current = pane
+
+  // Show a transient message
+  const showMessage = useCallback((msg: string, variant?: 'success' | 'error' | undefined): void => {
+    setStatusMessage(msg)
+    setMessageVariant(variant)
+    setTimeout(() => {
+      setStatusMessage('')
+      setMessageVariant(undefined)
+    }, 3000)
+  }, [])
+
+  // Fetch repos on startup
+  useEffect(() => {
+    void (async () => {
+      let apiRepos: RepoChoice[] = []
+      try {
+        const fetched = await deps.listUserRepos()
+        apiRepos = fetched.map((r) => ({ owner: r.owner, name: r.name }))
+      } catch {
+        // Fall back to config repos only
+      }
+
+      // Merge config repos + API repos (dedup)
+      const seen = new Set<string>()
+      const merged: RepoChoice[] = []
+      for (const r of deps.configRepos) {
+        const key = `${r.owner}/${r.name}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          merged.push({ owner: r.owner, name: r.name })
+        }
+      }
+      for (const r of apiRepos) {
+        const key = `${r.owner}/${r.name}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          merged.push(r)
+        }
+      }
+      setRepos(merged)
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // On repo selection
+  const handleRepoSelect = useCallback((repo: RepoChoice): void => {
+    setSelectedRepo(repo)
+    setScreen('main')
+    setOpenIssues([])
+    setTableCursor(0)
+
+    // Fetch open issues for the selected repo
+    void (async () => {
+      try {
+        const issues = await deps.fetchOpenIssues(repo.owner, repo.name)
+        setOpenIssues(issues)
+      } catch {
+        showMessage(messages.error('Could not fetch issues'), 'error')
+      }
+    })()
+
+    // Fetch labels
+    void (async () => {
+      try {
+        const fetched = await deps.fetchLabels(repo.owner, repo.name)
+        setLabels(fetched)
+      } catch {
+        setLabels([])
+      }
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deps, showMessage])
+
+  // Clear form helper
+  const clearForm = useCallback((): void => {
+    setTitle('')
+    setBody('')
+    setEditingIssue(undefined)
+  }, [])
+
+  // Handle vim : commands
+  const handleCommand = useCallback((cmd: string): void => {
+    const repo = selectedRepoRef.current
+    if (!repo) return
+
+    if (cmd === 'w') {
+      void (async () => {
+        try {
+          const currentTitle = titleRef.current.trim()
+          const currentBody = bodyRef.current.trim()
+          if (!currentTitle) {
+            showMessage(messages.error('Title is required'), 'error')
+            return
+          }
+
+          const editing = editingIssueRef.current
+          if (editing !== undefined) {
+            await deps.updateIssue(repo.owner, repo.name, editing, currentTitle, currentBody)
+            showMessage(messages.issueUpdated(editing), 'success')
+          } else {
+            const result = await deps.createIssue(repo.owner, repo.name, currentTitle, currentBody, labelsRef.current)
+            showMessage(messages.issueCreated(result.number, `${repo.owner}/${repo.name}`), 'success')
+            setRecentIssues((prev) => [
+              { number: result.number, title: currentTitle, repo: `${repo.owner}/${repo.name}` },
+              ...prev,
+            ])
+            // Refresh open issues
+            try {
+              const issues = await deps.fetchOpenIssues(repo.owner, repo.name)
+              setOpenIssues(issues)
+            } catch {
+              // Non-fatal
+            }
+          }
+          clearForm()
+        } catch (err) {
+          showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+        }
+      })()
+    } else if (cmd === 'q' || cmd === 'q!') {
+      app.exit()
+    } else if (cmd === 'wq') {
+      void (async () => {
+        try {
+          const currentTitle = titleRef.current.trim()
+          const currentBody = bodyRef.current.trim()
+          if (!currentTitle) {
+            showMessage(messages.error('Title is required'), 'error')
+            return
+          }
+
+          const editing = editingIssueRef.current
+          if (editing !== undefined) {
+            await deps.updateIssue(repo.owner, repo.name, editing, currentTitle, currentBody)
+          } else {
+            await deps.createIssue(repo.owner, repo.name, currentTitle, currentBody, labelsRef.current)
+          }
+          app.exit()
+        } catch (err) {
+          showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+        }
+      })()
+    } else if (cmd === 'e') {
+      clearForm()
+      showMessage('New issue', undefined)
+    } else if (cmd === 'repo') {
+      clearForm()
+      setScreen('repo-select')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deps, app, clearForm, showMessage])
+
+  // Handle vim normal mode actions
+  const handleAction = useCallback((action: string): void => {
+    const currentPane = paneRef.current
+    const currentTab = tableTabRef.current
+
+    if (action === 'move-down') {
+      if (currentPane === 'table') {
+        setTableCursor((c) => {
+          const items = currentTab === 'open' ? openIssuesRef.current : recentIssuesRef.current
+          return items.length === 0 ? 0 : Math.min(c + 1, items.length - 1)
+        })
+      }
+      // form move-down is handled by VimProvider (formField cycling)
+    } else if (action === 'move-up') {
+      if (currentPane === 'table') {
+        setTableCursor((c) => Math.max(0, c - 1))
+      }
+      // form move-up is handled by VimProvider (formField cycling)
+    } else if (action === 'move-left') {
+      setPane('form')
+    } else if (action === 'move-right') {
+      setPane('table')
+    } else if (action === 'jump-top') {
+      setTableCursor(0)
+    } else if (action === 'jump-bottom') {
+      const items = currentTab === 'open' ? openIssuesRef.current : recentIssuesRef.current
+      setTableCursor(items.length === 0 ? 0 : items.length - 1)
+    } else if (action === 'tab-1') {
+      setTableTab('open')
+      setTableCursor(0)
+    } else if (action === 'tab-2') {
+      setTableTab('recent')
+      setTableCursor(0)
+    } else if (action === 'new-issue') {
+      clearForm()
+      setPane('form')
+    } else if (action === 'enter') {
+      if (currentPane === 'table') {
+        const repo = selectedRepoRef.current
+        if (!repo) return
+        const items = currentTab === 'open' ? openIssuesRef.current : recentIssuesRef.current
+        const item = items[tableCursorRef.current]
+        if (!item) return
+
+        void (async () => {
+          try {
+            const detail = await deps.fetchIssueDetail(repo.owner, repo.name, item.number)
+            setTitle(detail.title)
+            setBody(detail.body)
+            setEditingIssue(detail.number)
+            setPane('form')
+          } catch (err) {
+            showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+          }
+        })()
+      }
+    } else if (action === 'polish') {
+      if (deps.polishText !== undefined) {
+        void (async () => {
+          try {
+            const result = await deps.polishText!(titleRef.current, bodyRef.current)
+            if (result !== undefined) {
+              setTitle(result.title)
+              setBody(result.body)
+              showMessage(messages.polishSuccess(), 'success')
+            } else {
+              showMessage(messages.polishNoChange(), undefined)
+            }
+          } catch (err) {
+            showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+          }
+        })()
+      }
+    } else if (action === 'refresh') {
+      const repo = selectedRepoRef.current
+      if (!repo) return
+      void (async () => {
+        try {
+          const issues = await deps.fetchOpenIssues(repo.owner, repo.name)
+          setOpenIssues(issues)
+          showMessage('Refreshed', 'success')
+        } catch (err) {
+          showMessage(messages.error(err instanceof Error ? err.message : String(err)), 'error')
+        }
+      })()
+    } else if (action === 'escape') {
+      if (editingIssueRef.current !== undefined) {
+        clearForm()
+        showMessage('Cancelled edit', undefined)
+      }
+    } else if (action === 'clear-field') {
+      // TODO: formField lives inside VimProvider, which is a child of App.
+      // handleAction is passed as a prop *to* VimProvider, so we can't read
+      // formField here. Needs formField lifted to App state in a follow-up.
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deps, clearForm, showMessage])
+
+  const repoLabel = selectedRepo ? `${selectedRepo.owner}/${selectedRepo.name}` : ''
+
+  if (screen === 'repo-select') {
+    return (
+      <DepsContext.Provider value={deps}>
+        <Box flexDirection="column">
+          <RepoSelector repos={repos} onSelect={handleRepoSelect} />
+        </Box>
+      </DepsContext.Provider>
+    )
+  }
+
+  return (
+    <DepsContext.Provider value={deps}>
+      <VimProvider onCommand={handleCommand} onAction={handleAction}>
+        <Box flexDirection="column">
+          <SplitPane
+            left={
+              <IssueForm
+                title={title}
+                body={body}
+                labels={labels}
+                onTitleChange={setTitle}
+                onBodyChange={setBody}
+                active={pane === 'form'}
+                editingIssue={editingIssue}
+              />
+            }
+            right={
+              <IssueTable
+                openIssues={openIssues}
+                recentIssues={recentIssues}
+                active={pane === 'table'}
+                cursor={tableCursor}
+                tab={tableTab}
+              />
+            }
+          />
+          <StatusBar repo={repoLabel} message={statusMessage} />
+          <MessageToast message={statusMessage} variant={messageVariant} />
+        </Box>
+      </VimProvider>
+    </DepsContext.Provider>
+  )
+}
+
+export async function runTui(deps: TuiDeps): Promise<number> {
+  const instance = render(<App deps={deps} />)
+  await instance.waitUntilExit()
+  return 0
+}

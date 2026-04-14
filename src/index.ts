@@ -212,13 +212,15 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
     return runTui({
       listUserRepos: () => github.listUserRepos(),
       fetchLabels: (o, n) => github.fetchLabels(o, n),
+      fetchOpenIssues: async (o, n) => {
+        const issues = await github.fetchOpenIssues(o, n)
+        return issues.map((i) => ({ number: i.number, title: i.title, labels: [] as string[] }))
+      },
+      fetchIssueDetail: (o, n, num) => github.fetchIssueDetail(o, n, num),
       createIssue: (o, n, t, b, l) => github.createIssue(o, n, t, b, l),
+      updateIssue: (o, n, num, t, b) => github.updateIssue(o, n, num, t, b),
       polishText: mapAvailable ? (t, b) => polishIssueText(t, b) : undefined,
-      // TODO: promptSearch will be provided by the Ink TUI (Task 2)
-      // TODO: promptInput will be provided by the Ink TUI (Task 2)
-      // TODO: promptCheckbox will be provided by the Ink TUI (Task 2)
       configRepos,
-      output: console,
     })
   }
 
