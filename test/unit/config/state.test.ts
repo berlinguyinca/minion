@@ -298,6 +298,34 @@ describe('StateManager', () => {
       })
       expect(sm.shouldProcessIssue('owner/repo', 12)).toBe(false)
     })
+
+    it('returns true for a partial outcome (draft PR) under max retries with backoff elapsed', () => {
+      const sm = new StateManager(makeTempStatePath(), undefined, {
+        maxAttempts: 3,
+        backoffMinutes: 0,
+      })
+      sm.markIssueOutcome('owner/repo', 20, {
+        status: 'partial',
+        lastAttempt: new Date(Date.now() - 1000).toISOString(),
+        attemptCount: 1,
+        prUrl: 'https://github.com/owner/repo/pull/50',
+      })
+      expect(sm.shouldProcessIssue('owner/repo', 20)).toBe(true)
+    })
+
+    it('returns false for a partial outcome at max retries', () => {
+      const sm = new StateManager(makeTempStatePath(), undefined, {
+        maxAttempts: 3,
+        backoffMinutes: 0,
+      })
+      sm.markIssueOutcome('owner/repo', 21, {
+        status: 'partial',
+        lastAttempt: new Date(Date.now() - 1000).toISOString(),
+        attemptCount: 3,
+        prUrl: 'https://github.com/owner/repo/pull/51',
+      })
+      expect(sm.shouldProcessIssue('owner/repo', 21)).toBe(false)
+    })
   })
 
   describe('markIssueOutcome', () => {

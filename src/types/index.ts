@@ -77,7 +77,7 @@ export interface QuotaState {
 }
 
 export interface IssueOutcome {
-  status: 'success' | 'failure'
+  status: 'success' | 'failure' | 'partial'
   lastAttempt: string        // ISO 8601
   attemptCount: number
   error?: string             // truncated failure reason

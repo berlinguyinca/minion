@@ -203,6 +203,8 @@ describe('IssueProcessor', () => {
     expect(github.createPullRequest).not.toHaveBeenCalled()
     expect(result.isDraft).toBe(true)
     expect(result.testsPassed).toBe(false)
+    // Draft PRs should be marked as 'partial' in state (eligible for retry)
+    expect(state.markIssueOutcome).toHaveBeenCalledWith('acme/api', 42, expect.objectContaining({ status: 'partial' }))
   })
 
   it('creates regular PR when tests pass, result has isDraft: false and testsPassed: true', async () => {

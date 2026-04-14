@@ -7,6 +7,7 @@ import type { SpecCache } from './spec-cache.js'
 import { createTempDir, cleanupTempDir, buildBranchName } from '../git/index.js'
 import { buildSpecPrompt, buildImplementationPrompt, buildReviewPrompt, buildFollowUpPrompt } from './prompts.js'
 import { detectTestCommand, runTests } from './test-runner.js'
+import { humanizeAIError } from '../ai/errors.js'
 
 export class IssueProcessor {
   constructor(
@@ -154,7 +155,7 @@ export class IssueProcessor {
           '⚠️ No commit was created, so no PR was opened.',
           `**Model used:** ${modelUsed}`,
           `**Tests:** ${testsPassed ? '✅ Passing' : '❌ Failing'}`,
-          aiFailure !== null ? `**AI Error:** ${aiFailure.message}` : '',
+          aiFailure !== null ? `**AI Error:** ${humanizeAIError(aiFailure)}` : '',
         ])
         return {
           issueNumber: issue.number,
@@ -174,7 +175,7 @@ export class IssueProcessor {
       // 10. Create PR (regular or draft based on test result and AI failure)
       const prTitle = `[AI] ${issue.title}`
       const prBody = aiFailure !== null
-        ? `Automated implementation attempt for issue #${issue.number}.\n\n⚠️ AI invocation failed: ${aiFailure.message}`
+        ? `Automated implementation attempt for issue #${issue.number}.\n\n⚠️ ${humanizeAIError(aiFailure)}`
         : `Automated implementation for issue #${issue.number}.\n\n${issue.body}`
 
       const prParams = {
@@ -263,14 +264,14 @@ export class IssueProcessor {
         `**Model used:** ${modelUsed}`,
         `**Tests:** ${testsPassed ? '✅ Passing' : '❌ Failing'}`,
         `**Files changed:** ${filesChanged.join(', ') || 'none'}`,
-        aiFailure !== null ? `\n⚠️ **AI Error:** ${aiFailure.message}` : '',
+        aiFailure !== null ? `\n⚠️ **AI Error:** ${humanizeAIError(aiFailure)}` : '',
       ].join('\n').trim()
 
       await this.github.postIssueComment(repo.owner, repo.name, issue.number, commentBody)
 
       // 18. Mark issue as processed in state
       this.state.markIssueOutcome(repoFullName, issue.number, {
-        status: 'success',
+        status: isDraft ? 'partial' : 'success',
         lastAttempt: new Date().toISOString(),
         attemptCount: 1,
         prUrl,

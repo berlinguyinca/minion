@@ -144,7 +144,7 @@ export class StateManager {
     if (outcome === undefined) return true
     if (outcome.status === 'success') return false
 
-    // Failure case: check retry eligibility
+    // Failure or partial (draft PR with failing tests): check retry eligibility
     if (outcome.attemptCount >= this.maxAttempts) return false
 
     const elapsed = Date.now() - new Date(outcome.lastAttempt).getTime()

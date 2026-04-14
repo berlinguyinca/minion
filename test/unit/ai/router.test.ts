@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AIProvider, AIModel, StructuredResult, AgentResult } from '../../../src/types/index.js'
-import { AIBinaryNotFoundError, AITimeoutError, AIInvocationError } from '../../../src/ai/errors.js'
+import { AIBinaryNotFoundError, AITimeoutError, AIInvocationError, AIRateLimitError } from '../../../src/ai/errors.js'
 
 // ---------------------------------------------------------------------------
 // StateManager mock
@@ -162,6 +162,51 @@ describe('AIRouter', () => {
 
     await expect(router.invokeStructured('prompt', {})).rejects.toThrow(AIInvocationError)
     expect(codexProvider.invokeStructured).not.toHaveBeenCalled()
+  })
+
+  // -------------------------------------------------------------------------
+  // Falls through on AIRateLimitError
+  // -------------------------------------------------------------------------
+
+  it('invokeStructured falls through on AIRateLimitError (claude -> codex)', async () => {
+    claudeProvider.invokeStructured.mockRejectedValue(
+      new AIRateLimitError('claude', 1, '5pm PT', 'rate limited'),
+    )
+
+    const result = await router.invokeStructured('prompt', {})
+
+    expect(claudeProvider.invokeStructured).toHaveBeenCalledOnce()
+    expect(codexProvider.invokeStructured).toHaveBeenCalledOnce()
+    expect(result.model).toBe('codex')
+  })
+
+  it('invokeAgent falls through on AIRateLimitError (claude -> codex)', async () => {
+    claudeProvider.invokeAgent.mockRejectedValue(
+      new AIRateLimitError('claude', 1, '5pm PT', 'rate limited'),
+    )
+
+    const result = await router.invokeAgent('prompt', '/tmp')
+
+    expect(claudeProvider.invokeAgent).toHaveBeenCalledOnce()
+    expect(codexProvider.invokeAgent).toHaveBeenCalledOnce()
+    expect(result.model).toBe('codex')
+  })
+
+  it('invokeStructuredThenAgent falls through on AIRateLimitError', async () => {
+    claudeProvider.invokeStructured.mockRejectedValue(
+      new AIRateLimitError('claude', 1, '5pm PT', 'rate limited'),
+    )
+
+    const result = await router.invokeStructuredThenAgent(
+      'issue text',
+      { type: 'object' },
+      'agent prompt',
+      '/work',
+    )
+
+    expect(claudeProvider.invokeStructured).toHaveBeenCalledOnce()
+    expect(codexProvider.invokeStructured).toHaveBeenCalledOnce()
+    expect(result.model).toBe('codex')
   })
 
   // -------------------------------------------------------------------------

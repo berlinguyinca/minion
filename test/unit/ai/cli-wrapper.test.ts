@@ -14,7 +14,7 @@ import { spawn } from 'node:child_process'
 import { ClaudeWrapper } from '../../../src/ai/claude-wrapper.js'
 import { CodexWrapper } from '../../../src/ai/codex-wrapper.js'
 import { OllamaWrapper } from '../../../src/ai/ollama-wrapper.js'
-import { AITimeoutError, AIBinaryNotFoundError, AIInvocationError } from '../../../src/ai/errors.js'
+import { AITimeoutError, AIBinaryNotFoundError, AIInvocationError, AIRateLimitError } from '../../../src/ai/errors.js'
 
 const spawnMock = spawn as unknown as MockInstance
 
@@ -165,6 +165,13 @@ describe('ClaudeWrapper', () => {
     spawnMock.mockReturnValue(makeFakeProcess({ exitCode: 1, stderr: 'some error' }))
 
     await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AIInvocationError)
+  })
+
+  it('throws AIRateLimitError on non-zero exit with rate-limit output', async () => {
+    const rateJson = JSON.stringify({ type: 'result', is_error: true, result: "You've hit your limit · resets 5pm (America/Los_Angeles)" })
+    spawnMock.mockReturnValue(makeFakeProcess({ exitCode: 1, stderr: rateJson }))
+
+    await expect(claude.invokeStructured('prompt', {})).rejects.toThrow(AIRateLimitError)
   })
 
   it('skips blank lines in parseClaudeStructured output', async () => {

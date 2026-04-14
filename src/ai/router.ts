@@ -1,6 +1,6 @@
 import type { StateManager } from '../config/state.js'
 import type { AIProvider, AIModel, StructuredResult, AgentResult, PipelineTask, TaskModelConfig } from '../types/index.js'
-import { AIBinaryNotFoundError, AIInvocationError } from './errors.js'
+import { AIBinaryNotFoundError, AIInvocationError, AIRateLimitError } from './errors.js'
 
 type ProvidersMap = Partial<Record<AIModel, AIProvider>>
 
@@ -37,7 +37,10 @@ export class AIRouter {
         if (err instanceof AIBinaryNotFoundError) {
           continue
         }
-        // AITimeoutError, AIInvocationError, or unknown — re-throw immediately
+        if (err instanceof AIRateLimitError) {
+          console.warn(`[ai-router] ${model} rate-limited, trying next provider`)
+          continue
+        }
         throw err
       }
     }
@@ -61,6 +64,10 @@ export class AIRouter {
         return { ...result, model }
       } catch (err) {
         if (err instanceof AIBinaryNotFoundError) {
+          continue
+        }
+        if (err instanceof AIRateLimitError) {
+          console.warn(`[ai-router] ${model} rate-limited, trying next provider`)
           continue
         }
         // Fall through on "does not support" errors (e.g. OllamaWrapper agent mode)
@@ -106,6 +113,10 @@ export class AIRouter {
         return { structured: structuredResult, agent: agentResult, model }
       } catch (err) {
         if (err instanceof AIBinaryNotFoundError) {
+          continue
+        }
+        if (err instanceof AIRateLimitError) {
+          console.warn(`[ai-router] ${model} rate-limited, trying next provider`)
           continue
         }
         // Fall through on "does not support" errors

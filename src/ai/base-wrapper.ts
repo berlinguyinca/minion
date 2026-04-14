@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { AITimeoutError, AIBinaryNotFoundError, AIInvocationError } from './errors.js'
+import { AITimeoutError, AIBinaryNotFoundError, AIInvocationError, detectRateLimitError } from './errors.js'
 
 export interface InvokeProcessOptions {
   command: string
@@ -74,7 +74,9 @@ export async function invokeProcess(options: InvokeProcessOptions): Promise<Invo
       const stderr = Buffer.concat(stderrChunks).toString('utf-8')
 
       if (code !== 0) {
-        settle(() => reject(new AIInvocationError(model, code ?? -1, stderr || stdout)))
+        const raw = stderr || stdout
+        const rateLimitErr = detectRateLimitError(model, code ?? -1, raw)
+        settle(() => reject(rateLimitErr ?? new AIInvocationError(model, code ?? -1, raw)))
         return
       }
 
