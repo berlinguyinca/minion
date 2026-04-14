@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'node:path'
-import { createInterface } from 'node:readline/promises'
+import { createInkPrompt } from './ink-prompt.js'
 import type { RepoConfig } from '../types/index.js'
 
 interface OnboardingAnswers {
@@ -76,16 +76,8 @@ function defaultCommandExists(command: string): boolean {
   return result.status === 0
 }
 
-async function createPrompt(): Promise<{ ask: (question: string) => Promise<string>; close: () => void }> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
-
-  return {
-    ask: (question: string) => rl.question(question),
-    close: () => rl.close(),
-  }
+function createPrompt(): { ask: (question: string) => Promise<string>; close: () => void } {
+  return createInkPrompt()
 }
 
 function displayPath(cwd: string, targetPath: string): string {
@@ -270,8 +262,8 @@ export async function runOnboarding(options: OnboardingOptions): Promise<number>
   output.log('Starting minion onboarding...')
 
   let promptHandle: { ask: (question: string) => Promise<string>; close: () => void } | undefined
-  const prompt = options.prompt ?? (async (question: string) => {
-    if (!promptHandle) promptHandle = await createPrompt()
+  const prompt = options.prompt ?? ((question: string) => {
+    if (!promptHandle) promptHandle = createPrompt()
     return promptHandle.ask(question)
   })
 
