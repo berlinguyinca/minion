@@ -31,8 +31,8 @@ describe('IssueTable', () => {
         active={true} cursor={0} tab="recent" />
     )
     expect(lastFrame()).toContain('Recent')
-    expect(lastFrame()).toContain('org/api')
-    expect(lastFrame()).toContain('org/web')
+    expect(lastFrame()).toContain('Fix login bug')
+    expect(lastFrame()).toContain('New feature')
   })
 
   it('shows cursor on active row', () => {
@@ -51,13 +51,13 @@ describe('IssueTable', () => {
     expect(lastFrame()).toContain('No bananas')
   })
 
-  it('shows labels for open issues', () => {
+  it('shows issue titles for open issues', () => {
     const { lastFrame } = render(
       <IssueTable openIssues={openIssues} recentIssues={[]}
         active={true} cursor={0} tab="open" />
     )
-    expect(lastFrame()).toContain('bug')
-    expect(lastFrame()).toContain('feat')
+    expect(lastFrame()).toContain('Fix login bug')
+    expect(lastFrame()).toContain('Add dark mode')
   })
 
   it('dims border when inactive', () => {
@@ -74,13 +74,13 @@ describe('IssueTable', () => {
     expect(inactive.lastFrame()).toBeDefined()
   })
 
-  it('renders long titles with truncate-end wrap', () => {
+  it('truncates long titles', () => {
     const longIssues = [{ number: 1, title: 'A'.repeat(50), labels: [] }]
     const { lastFrame } = render(
       <IssueTable openIssues={longIssues} recentIssues={[]}
         active={true} cursor={0} tab="open" />
     )
-    // Title renders — truncation happens at terminal width via Ink's wrap="truncate-end"
-    expect(lastFrame()).toContain('AAAA')
+    expect(lastFrame()).not.toContain('A'.repeat(50))
+    expect(lastFrame()).toContain('…')
   })
 })

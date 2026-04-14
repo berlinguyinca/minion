@@ -10,6 +10,12 @@ interface IssueTableProps {
   tab: 'open' | 'recent'
 }
 
+const TITLE_MAX = 40
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s
+}
+
 export function IssueTable({ openIssues, recentIssues, active, cursor, tab }: IssueTableProps): React.JSX.Element {
   const borderColor = active ? colors.overalls : colors.dim
 
@@ -24,14 +30,7 @@ export function IssueTable({ openIssues, recentIssues, active, cursor, tab }: Is
             <Box width={5} flexShrink={0}>
               <Text color={colors.dim}>#{issue.number}</Text>
             </Box>
-            <Box flexGrow={1} flexShrink={1} flexBasis={0}>
-              <Text wrap="truncate-end">{issue.title}</Text>
-            </Box>
-            {issue.labels.length > 0 && (
-              <Box flexShrink={0} marginLeft={1}>
-                <Text color={colors.banana} wrap="truncate-end">{issue.labels.join(', ')}</Text>
-              </Box>
-            )}
+            <Text>{truncate(issue.title, TITLE_MAX)}</Text>
           </Box>
         )
       })
@@ -45,12 +44,7 @@ export function IssueTable({ openIssues, recentIssues, active, cursor, tab }: Is
             <Box width={5} flexShrink={0}>
               <Text color={colors.dim}>#{issue.number}</Text>
             </Box>
-            <Box flexGrow={1} flexShrink={1} flexBasis={0}>
-              <Text wrap="truncate-end">{issue.title}</Text>
-            </Box>
-            <Box flexShrink={0} marginLeft={1}>
-              <Text color={colors.goggle}>{issue.repo}</Text>
-            </Box>
+            <Text>{truncate(issue.title, TITLE_MAX)}</Text>
           </Box>
         )
       })
