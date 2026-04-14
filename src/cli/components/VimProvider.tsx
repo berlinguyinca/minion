@@ -145,9 +145,17 @@ export function VimProvider({
         if (escape) {
           setModeSync('normal')
         } else if (shiftTab) {
-          setFormFieldSync((f) => (f === 'body' ? 'title' : 'body'))
+          setFormFieldSync((f) => {
+            if (f === 'title') return 'comment'
+            if (f === 'body') return 'title'
+            return 'body'
+          })
         } else if (tab) {
-          setFormFieldSync((f) => (f === 'title' ? 'body' : 'title'))
+          setFormFieldSync((f) => {
+            if (f === 'title') return 'body'
+            if (f === 'body') return 'comment'
+            return 'title'
+          })
         }
         // All other keys pass through to text fields
         return

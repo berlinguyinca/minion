@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react'
 
 export type VimMode = 'normal' | 'insert' | 'command'
 export type Pane = 'form' | 'table'
-export type FormField = 'title' | 'body'
+export type FormField = 'title' | 'body' | 'comment'
 export type InputMode = 'vim' | 'basic'
 
 export interface VimState {

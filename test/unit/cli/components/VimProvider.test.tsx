@@ -25,6 +25,11 @@ function InputModeDisplay() {
   return <Text>{inputMode}</Text>
 }
 
+function FormFieldDisplay() {
+  const { formField } = useVim()
+  return <Text>{formField}</Text>
+}
+
 describe('VimProvider', () => {
   it('starts in normal mode', () => {
     const { lastFrame } = render(
@@ -239,6 +244,56 @@ describe('VimProvider', () => {
       onAction.mockClear()
       stdin.write('\x1B[B') // arrow down
       expect(onAction).not.toHaveBeenCalledWith('move-down')
+    })
+  })
+
+  describe('3-field form navigation', () => {
+    it('insert mode Tab cycles title → body', () => {
+      const onFormFieldChange = vi.fn()
+      const { stdin } = render(
+        <VimProvider initialInputMode="vim" formField="title" onFormFieldChange={onFormFieldChange}>
+          <FormFieldDisplay />
+        </VimProvider>
+      )
+      stdin.write('i')
+      stdin.write('\t')
+      expect(onFormFieldChange).toHaveBeenCalledWith('body')
+    })
+
+    it('insert mode Tab from body goes to comment', () => {
+      const onFormFieldChange = vi.fn()
+      const { stdin } = render(
+        <VimProvider initialInputMode="vim" formField="body" onFormFieldChange={onFormFieldChange}>
+          <FormFieldDisplay />
+        </VimProvider>
+      )
+      stdin.write('i')
+      stdin.write('\t')
+      expect(onFormFieldChange).toHaveBeenCalledWith('comment')
+    })
+
+    it('insert mode Tab from comment wraps to title', () => {
+      const onFormFieldChange = vi.fn()
+      const { stdin } = render(
+        <VimProvider initialInputMode="vim" formField="comment" onFormFieldChange={onFormFieldChange}>
+          <FormFieldDisplay />
+        </VimProvider>
+      )
+      stdin.write('i')
+      stdin.write('\t')
+      expect(onFormFieldChange).toHaveBeenCalledWith('title')
+    })
+
+    it('insert mode Shift+Tab cycles backwards from title to comment', () => {
+      const onFormFieldChange = vi.fn()
+      const { stdin } = render(
+        <VimProvider initialInputMode="vim" formField="title" onFormFieldChange={onFormFieldChange}>
+          <FormFieldDisplay />
+        </VimProvider>
+      )
+      stdin.write('i')
+      stdin.write('\x1B[Z')
+      expect(onFormFieldChange).toHaveBeenCalledWith('comment')
     })
   })
 
