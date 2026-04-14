@@ -2,10 +2,11 @@
 
 ## Environment Variables
 
-- `GITHUB_TOKEN` **required** — src/github/client.ts
+- `GITHUB_TOKEN` **required** — .env.example
 
 ## Config Files
 
+- `.env.example`
 - `tsconfig.json`
 
 ## Key Dependencies

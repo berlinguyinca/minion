@@ -1,0 +1,19 @@
+# Pipeline configuration — targeting this repo itself for testing
+repos:
+  - owner: berlinguyinca
+    name: autodev
+    defaultBranch: main
+    testCommand: pnpm test
+
+maxIssuesPerRun: 3
+
+ollamaModel: qwen2.5-coder:latest
+
+quotaLimits:
+  claude: 200
+  codex: 100
+
+providerChain:
+  - claude
+  - codex
+  - ollama
