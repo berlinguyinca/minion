@@ -97,9 +97,9 @@ export class PipelineRunner {
                 continue
               }
 
+              const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
               console.log(`[merge] Processing merge request for ${repo.owner}/${repo.name} PR #${pr.number}`)
               const result = await this.mergeProcessor.processMergeRequest(repo, pr)
-              const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
               if (result.merged) {
                 console.log(`[merge] Merged PR #${pr.number} for ${repo.owner}/${repo.name}`)
                 this.state.markPROutcome(repoFullName, pr.number, {
@@ -117,7 +117,10 @@ export class PipelineRunner {
               }
             }
           } catch (err) {
-            console.error(`[merge] Error checking/merging PR #${pr.number}:`, err instanceof Error ? err.message : String(err))
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            console.error(`[merge] Error checking/merging PR #${pr.number}:`, errorMsg)
+            const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
+            this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, errorMsg))
           }
         }
       } catch (err) {
@@ -151,10 +154,10 @@ export class PipelineRunner {
             continue
           }
 
+          const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
           try {
             console.log(`[review] Auto-reviewing ${repo.owner}/${repo.name} PR #${pr.number}`)
             const result = await this.reviewProcessor.reviewPR(repo, pr)
-            const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
             if (result.merged) {
               console.log(`[review] Auto-merged PR #${pr.number}`)
               this.state.markPROutcome(repoFullName, pr.number, {
@@ -182,7 +185,6 @@ export class PipelineRunner {
           } catch (err) {
             const errorMsg = err instanceof Error ? err.message : String(err)
             console.error(`[review] Error reviewing PR #${pr.number}:`, errorMsg)
-            const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
             this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, errorMsg))
           }
         }

@@ -111,9 +111,7 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
     config.maxPollRuns = parsed.maxPollRuns
   }
 
-  if (parsed.maxConsecutiveFailures !== 5) {
-    config.maxConsecutiveFailures = parsed.maxConsecutiveFailures
-  }
+  config.maxConsecutiveFailures = parsed.maxConsecutiveFailures
 
   return config
 }

@@ -142,13 +142,14 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
     let consecutiveFailures = 0
     let firstRun = true
 
+    let lastExitCode = 0
     while (!shutdown) {
-      const code = await runner.run()
+      lastExitCode = await runner.run()
       totalRuns++
 
-      if (code !== 0) {
+      if (lastExitCode !== 0) {
         consecutiveFailures++
-        console.warn(`[poll] Run finished with failures (exit code ${code}) — consecutive failures: ${consecutiveFailures}/${maxConsecFail}`)
+        console.warn(`[poll] Run finished with failures (exit code ${lastExitCode}) — consecutive failures: ${consecutiveFailures}/${maxConsecFail}`)
       } else {
         consecutiveFailures = 0
       }
@@ -177,7 +178,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
     }
 
     console.log('[poll] Shutdown complete.')
-    return 0
+    return lastExitCode
   }
 
   // Single-run mode (default)

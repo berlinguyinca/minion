@@ -662,4 +662,24 @@ describe('PipelineRunner', () => {
       expect.objectContaining({ status: 'failed', error: 'conflicts unresolvable' }),
     )
   })
+
+  it('merge phase: marks failed outcome when processMergeRequest throws', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([
+      { id: 1, body: '/merge', user: 'dev', createdAt: '2024-01-01T00:00:00Z' },
+    ])
+    mergeProcessorMock.processMergeRequest.mockRejectedValue(new Error('merge crash'))
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    errorSpy.mockRestore()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'failed', error: 'merge crash' }),
+    )
+  })
 })

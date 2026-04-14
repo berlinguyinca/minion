@@ -57,6 +57,12 @@ retry:
 mergeCommentTrigger: '/merge'     # comment text that triggers merge (default: '/merge')
 mergeMethod: merge                # merge | squash | rebase (default: merge)
 mergeDraftPRs: false              # allow merging draft PRs (default: false)
+autoMerge: true                   # AI auto-review and merge open PRs (default: true)
+autoMergeRequireTests: true       # require tests to pass before auto-merge (default: true)
+
+# Poll loop failsafes (only apply when running with --poll)
+# maxPollRuns: 100              # stop after N poll iterations (default: unlimited)
+maxConsecutiveFailures: 5         # stop after N consecutive failed runs (default: 5)
 
 # Per-provider configuration
 providers:

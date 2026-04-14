@@ -221,4 +221,106 @@ describe('CLI run()', () => {
     expect(allOutput).toContain('--poll')
     spy.mockRestore()
   })
+
+  // -------------------------------------------------------------------------
+  // Poll loop failsafes
+  // -------------------------------------------------------------------------
+
+  it('poll loop stops after maxPollRuns', async () => {
+    vi.useFakeTimers()
+
+    vi.mocked(loadConfig).mockReturnValue({
+      repos: [{ owner: 'acme', name: 'api' }],
+      ollamaModel: 'qwen2.5-coder:latest',
+      maxIssuesPerRun: 10,
+      maxPollRuns: 2,
+    })
+
+    let runCount = 0
+    const runnerInstance = { run: vi.fn().mockImplementation(() => { runCount++; return Promise.resolve(0) }) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const runPromise = run(['--poll', '30'])
+
+    // Advance past the sleep between run 1 and run 2
+    await vi.advanceTimersByTimeAsync(31_000)
+    const code = await runPromise
+    logSpy.mockRestore()
+
+    expect(code).toBe(0)
+    expect(runCount).toBe(2)
+
+    vi.useRealTimers()
+  })
+
+  it('poll loop circuit breaker stops after consecutive failures', async () => {
+    vi.useFakeTimers()
+
+    vi.mocked(loadConfig).mockReturnValue({
+      repos: [{ owner: 'acme', name: 'api' }],
+      ollamaModel: 'qwen2.5-coder:latest',
+      maxIssuesPerRun: 10,
+      maxConsecutiveFailures: 3,
+    })
+
+    let runCount = 0
+    const runnerInstance = { run: vi.fn().mockImplementation(() => { runCount++; return Promise.resolve(1) }) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const runPromise = run(['--poll', '30'])
+
+    // Advance past sleeps between runs
+    await vi.advanceTimersByTimeAsync(120_000)
+    const code = await runPromise
+    errorSpy.mockRestore()
+    warnSpy.mockRestore()
+
+    expect(code).toBe(1)
+    expect(runCount).toBe(3)
+
+    vi.useRealTimers()
+  })
+
+  it('poll loop resets consecutive failure count on success', async () => {
+    vi.useFakeTimers()
+
+    vi.mocked(loadConfig).mockReturnValue({
+      repos: [{ owner: 'acme', name: 'api' }],
+      ollamaModel: 'qwen2.5-coder:latest',
+      maxIssuesPerRun: 10,
+      maxPollRuns: 4,
+      maxConsecutiveFailures: 3,
+    })
+
+    let runCount = 0
+    // Pattern: fail, fail, success, fail → should NOT trigger circuit breaker
+    const runnerInstance = {
+      run: vi.fn().mockImplementation(() => {
+        runCount++
+        const exitCode = runCount === 3 ? 0 : 1
+        return Promise.resolve(exitCode)
+      }),
+    }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const runPromise = run(['--poll', '30'])
+
+    // Advance past all sleeps
+    await vi.advanceTimersByTimeAsync(150_000)
+    const code = await runPromise
+    warnSpy.mockRestore()
+    logSpy.mockRestore()
+
+    // Should run all 4 times (maxPollRuns) since consecutive failures never hit 3
+    // Last run (run 4) failed, so exit code propagates as 1
+    expect(code).toBe(1)
+    expect(runCount).toBe(4)
+
+    vi.useRealTimers()
+  })
 })
