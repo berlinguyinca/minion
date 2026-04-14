@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildSpecPrompt,
-  buildImplementationPrompt,
   buildReviewPrompt,
   buildFollowUpPrompt,
   buildAutoReviewPrompt,
@@ -43,34 +42,6 @@ describe('buildSpecPrompt', () => {
 
   it('does not contain ${undefined} or [object Object]', () => {
     const prompt = buildSpecPrompt(issue)
-    expect(prompt).not.toContain('${undefined}')
-    expect(prompt).not.toContain('[object Object]')
-  })
-})
-
-describe('buildImplementationPrompt', () => {
-  const spec = '## Goal\nAdd rate limiting\n\n## Files\n- src/middleware/rate-limit.ts'
-
-  it('contains the spec text', () => {
-    expect(buildImplementationPrompt(spec, 'acme/api')).toContain(spec)
-  })
-
-  it('contains instruction to write tests alongside implementation', () => {
-    const prompt = buildImplementationPrompt(spec, 'acme/api')
-    expect(prompt.toLowerCase()).toMatch(/test|tests/i)
-  })
-
-  it('contains instruction to create files in the working directory', () => {
-    const prompt = buildImplementationPrompt(spec, 'acme/api')
-    expect(prompt.toLowerCase()).toMatch(/working directory|files|create/i)
-  })
-
-  it('does not return empty string', () => {
-    expect(buildImplementationPrompt(spec, 'acme/api').length).toBeGreaterThan(0)
-  })
-
-  it('does not contain ${undefined} or [object Object]', () => {
-    const prompt = buildImplementationPrompt(spec, 'acme/api')
     expect(prompt).not.toContain('${undefined}')
     expect(prompt).not.toContain('[object Object]')
   })

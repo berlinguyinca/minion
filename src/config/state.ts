@@ -50,7 +50,7 @@ export class StateManager {
 
   private load(): PipelineState {
     if (!existsSync(this.statePath)) {
-      const state: PipelineState = { processedIssues: {}, quota: {} }
+      const state: PipelineState = { processedIssues: {} }
       this.save(state)
       return state
     }
@@ -59,13 +59,11 @@ export class StateManager {
     const parsed = JSON.parse(raw) as {
       processedIssues: Record<string, unknown>
       reviewedPRs?: PipelineState['reviewedPRs']
-      quota?: PipelineState['quota']
       starPromptSeen?: boolean
     }
 
     const state: PipelineState = {
       processedIssues: migrateProcessedIssues(parsed.processedIssues),
-      quota: parsed.quota ?? {},
     }
     if (parsed.reviewedPRs !== undefined) {
       state.reviewedPRs = parsed.reviewedPRs

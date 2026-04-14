@@ -80,7 +80,7 @@ export class MAPWrapper implements AIProvider {
   }
 
   async invokeStructured<T>(): Promise<StructuredResult<T>> {
-    throw new Error('MAPWrapper does not support invokeStructured — use invokeAgent (handlesFullPipeline=true)')
+    throw new AIInvocationError('map', -1, 'MAPWrapper does not support invokeStructured — use invokeAgent (handlesFullPipeline=true)')
   }
 
   async invokeAgent(prompt: string, workingDir: string): Promise<AgentResult> {

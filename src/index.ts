@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import { existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
-import { exec, execSync } from 'node:child_process'
+import { execFile, execSync } from 'node:child_process'
 import { platform } from 'node:os'
 import { GitHubClient } from './github/index.js'
 import { MAPWrapper } from './ai/index.js'
@@ -23,7 +23,7 @@ function openInBrowser(url: string): void {
     linux: 'xdg-open',
   }
   const cmd = cmds[platform()] ?? 'xdg-open'
-  exec(`${cmd} ${url}`)
+  execFile(cmd, [url], () => {})
 }
 
 export async function showStarPrompt(state: StateManager): Promise<void> {

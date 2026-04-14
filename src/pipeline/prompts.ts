@@ -19,21 +19,6 @@ Produce a spec with these sections:
 Output as structured markdown.`
 }
 
-export function buildImplementationPrompt(spec: string, repoName: string): string {
-  return `You are an expert software engineer implementing a GitHub issue for the repository: ${repoName}.
-
-Your task is to implement the following specification:
-
-${spec}
-
-Instructions:
-- Create or modify all files described in the spec in the current working directory.
-- Write tests alongside the implementation — unit tests for all new logic, integration tests where applicable.
-- Follow existing code conventions in the repository.
-- Make sure all new code is properly typed and lint-clean.
-- Do not skip the tests; they are required for the implementation to be considered complete.`
-}
-
 export function buildReviewPrompt(diff: string): string {
   return `You are a senior software engineer performing a code review.
 

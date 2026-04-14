@@ -23,14 +23,13 @@ describe('StateManager', () => {
       expect(existsSync(statePath)).toBe(true)
     })
 
-    it('initializes with empty processedIssues and empty quota', () => {
+    it('initializes with empty processedIssues', () => {
       const statePath = makeTempStatePath()
       const sm = new StateManager(statePath)
       sm.shouldProcessIssue('owner/repo', 1)
 
       const raw = JSON.parse(readFileSync(statePath, 'utf-8'))
       expect(raw.processedIssues).toEqual({})
-      expect(raw.quota).toEqual({})
     })
 
     it('loads existing state file correctly', () => {
@@ -205,7 +204,6 @@ describe('StateManager', () => {
         processedIssues: {
           'owner/repo': [1, 2, 3],
         },
-        quota: {},
       }
       writeFileSync(statePath, JSON.stringify(oldState))
 
@@ -226,7 +224,6 @@ describe('StateManager', () => {
         processedIssues: {
           'owner/repo': [10, 20],
         },
-        quota: {},
       }
       writeFileSync(statePath, JSON.stringify(oldState))
 

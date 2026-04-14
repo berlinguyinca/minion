@@ -18,7 +18,7 @@ maxIssuesPerRun: 10
 
 # MAP (multi-agent-pipeline) configuration
 # mapModel: claude-sonnet-4-5      # Model MAP uses internally (optional)
-# mapTimeoutMs: 120000             # Timeout in milliseconds (default: 30 minutes)
+# mapTimeoutMs: 1800000            # Timeout in milliseconds (default: 30 minutes)
 
 # Retry configuration for failed issues
 retry:

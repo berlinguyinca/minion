@@ -22,7 +22,6 @@ export interface RepoConfig {
 
 export interface ProviderConfig {
   timeoutMs?: number;
-  quota?: number;
   model?: string;
   agents?: {
     spec?: { adapter: 'claude' | 'codex' | 'ollama' };
@@ -34,14 +33,6 @@ export interface ProviderConfig {
 export interface RetryConfig {
   maxAttempts: number
   backoffMinutes: number
-}
-
-export interface SecurityIssue {
-  severity: 'critical' | 'high' | 'medium' | 'low'
-  file: string
-  line: number
-  description: string
-  suggestedFix: string
 }
 
 export interface PipelineConfig {
@@ -57,12 +48,6 @@ export interface PipelineConfig {
   autoMergeRequireTests?: boolean;
   maxPollRuns?: number;
   maxConsecutiveFailures?: number;
-}
-
-export interface QuotaState {
-  used: number;
-  limit: number;
-  resetMonth: string; // "YYYY-MM" format, UTC
 }
 
 export interface IssueOutcome {
@@ -83,7 +68,6 @@ export interface PROutcome {
 export interface PipelineState {
   processedIssues: Record<string, Record<number, IssueOutcome>>; // "owner/name" -> { issueNumber: outcome }
   reviewedPRs?: Record<string, Record<number, PROutcome>>;      // "owner/name" -> { prNumber: outcome }
-  quota: Record<string, QuotaState>; // keyed by AIModel values (extensible)
   starPromptSeen?: boolean;
 }
 
