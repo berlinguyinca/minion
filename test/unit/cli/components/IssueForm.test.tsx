@@ -50,6 +50,43 @@ describe('IssueForm', () => {
     expect(lastFrame()).toContain('urgent')
   })
 
+  it('shows blue arrow on focused title field', () => {
+    const { lastFrame } = render(wrap(
+      <IssueForm title="Fix bug" body="Details" labels={[]}
+        onTitleChange={() => {}} onBodyChange={() => {}}
+        active={true} editingIssue={42} formField="title" />
+    ))
+    expect(lastFrame()).toContain('▶')
+    // Arrow should be near Title, not near Body
+    const lines = lastFrame()!.split('\n')
+    const titleLine = lines.find((l) => l.includes('Title'))
+    const bodyLine = lines.find((l) => l.includes('Body'))
+    expect(titleLine).toContain('▶')
+    expect(bodyLine).not.toContain('▶')
+  })
+
+  it('shows blue arrow on focused body field', () => {
+    const { lastFrame } = render(wrap(
+      <IssueForm title="Fix bug" body="Details" labels={[]}
+        onTitleChange={() => {}} onBodyChange={() => {}}
+        active={true} editingIssue={42} formField="body" />
+    ))
+    const lines = lastFrame()!.split('\n')
+    const titleLine = lines.find((l) => l.includes('Title'))
+    const bodyLine = lines.find((l) => l.includes('Body'))
+    expect(titleLine).not.toContain('▶')
+    expect(bodyLine).toContain('▶')
+  })
+
+  it('hides arrow when form is not active', () => {
+    const { lastFrame } = render(wrap(
+      <IssueForm title="Fix bug" body="Details" labels={[]}
+        onTitleChange={() => {}} onBodyChange={() => {}}
+        active={false} editingIssue={42} formField="title" />
+    ))
+    expect(lastFrame()).not.toContain('▶')
+  })
+
   it('hides label section when no labels', () => {
     const { lastFrame } = render(wrap(
       <IssueForm title="" body="" labels={[]}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { render, Box, useApp } from 'ink'
+import { render, Box, useApp, useStdout } from 'ink'
 import { VimProvider } from './components/VimProvider.js'
 import { RepoSelector } from './components/RepoSelector.js'
 import { IssueForm } from './components/IssueForm.js'
@@ -31,6 +31,8 @@ interface RepoChoice {
 
 function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
   const app = useApp()
+  const { stdout } = useStdout()
+  const terminalHeight = stdout?.rows ?? undefined
 
   // Screen routing
   const [screen, setScreen] = useState<Screen>('repo-select')
@@ -379,7 +381,7 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
         onPaneChange={setPane}
         onFormFieldChange={setFormField}
       >
-        <Box flexDirection="column">
+        <Box flexDirection="column" height={terminalHeight}>
           {showHelp ? (
             <HelpOverlay />
           ) : (

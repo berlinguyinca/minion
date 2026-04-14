@@ -28,16 +28,32 @@ export function IssueForm({
     <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1} flexGrow={1}>
       <Text color={colors.banana} bold>{header}</Text>
       <Box flexDirection="column" marginTop={1}>
-        <TextField
-          label="Title" value={title} onChange={onTitleChange}
-          active={active && formField === 'title'}
-        />
+        <Box>
+          <Box width={2}>
+            {active && formField === 'title'
+              ? <Text color={colors.overalls}>{'▶'}</Text>
+              : <Text>{' '}</Text>}
+          </Box>
+          <Box flexGrow={1}>
+            <TextField
+              label="Title" value={title} onChange={onTitleChange}
+              active={active && formField === 'title'}
+            />
+          </Box>
+        </Box>
         <Box marginTop={1}>
-          <TextField
-            label="Body" value={body} onChange={onBodyChange}
-            active={active && formField === 'body'}
-            multiline
-          />
+          <Box width={2}>
+            {active && formField === 'body'
+              ? <Text color={colors.overalls}>{'▶'}</Text>
+              : <Text>{' '}</Text>}
+          </Box>
+          <Box flexGrow={1}>
+            <TextField
+              label="Body" value={body} onChange={onBodyChange}
+              active={active && formField === 'body'}
+              multiline
+            />
+          </Box>
         </Box>
       </Box>
       {labels.length > 0 && (
