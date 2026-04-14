@@ -1,7 +1,7 @@
 import type { StateManager } from '../config/state.js'
 import type { GitHubClient } from '../github/client.js'
 import type { AIRouter } from '../ai/router.js'
-import type { PipelineConfig } from '../types/index.js'
+import type { PipelineConfig, PROutcome } from '../types/index.js'
 import { IssueProcessor } from './issue-processor.js'
 import { MergeProcessor } from './merge-processor.js'
 import { PRReviewProcessor } from './pr-review-processor.js'
@@ -80,6 +80,7 @@ export class PipelineRunner {
     const allowDrafts = this.config.mergeDraftPRs ?? false
 
     for (const repo of this.config.repos) {
+      const repoFullName = `${repo.owner}/${repo.name}`
       try {
         const prs = await this.github.listOpenPRsWithLabel(repo.owner, repo.name, 'ai-generated')
 
@@ -91,12 +92,28 @@ export class PipelineRunner {
             const hasMergeComment = comments.some((c) => c.body.includes(trigger))
 
             if (hasMergeComment) {
+              if (!this.state.shouldReviewPR(repoFullName, pr.number)) {
+                console.log(`[merge] Skipping PR #${pr.number} — max attempts reached or backoff pending`)
+                continue
+              }
+
               console.log(`[merge] Processing merge request for ${repo.owner}/${repo.name} PR #${pr.number}`)
               const result = await this.mergeProcessor.processMergeRequest(repo, pr)
+              const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
               if (result.merged) {
                 console.log(`[merge] Merged PR #${pr.number} for ${repo.owner}/${repo.name}`)
+                this.state.markPROutcome(repoFullName, pr.number, {
+                  status: 'merged',
+                  lastAttempt: new Date().toISOString(),
+                  attemptCount: prevCount + 1,
+                })
               } else {
                 console.warn(`[merge] Failed to merge PR #${pr.number}: ${result.error ?? 'unknown'}`)
+                this.state.markPROutcome(
+                  repoFullName,
+                  pr.number,
+                  this.buildFailedPROutcome(prevCount + 1, result.error),
+                )
               }
             }
           } catch (err) {
@@ -114,6 +131,7 @@ export class PipelineRunner {
     const trigger = this.config.mergeCommentTrigger ?? '/merge'
 
     for (const repo of this.config.repos) {
+      const repoFullName = `${repo.owner}/${repo.name}`
       try {
         const prs = await this.github.listOpenPRsWithLabel(repo.owner, repo.name, 'ai-generated')
 
@@ -128,23 +146,61 @@ export class PipelineRunner {
             continue
           }
 
+          if (!this.state.shouldReviewPR(repoFullName, pr.number)) {
+            console.log(`[review] Skipping PR #${pr.number} — max attempts reached or backoff pending`)
+            continue
+          }
+
           try {
             console.log(`[review] Auto-reviewing ${repo.owner}/${repo.name} PR #${pr.number}`)
             const result = await this.reviewProcessor.reviewPR(repo, pr)
+            const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
             if (result.merged) {
               console.log(`[review] Auto-merged PR #${pr.number}`)
+              this.state.markPROutcome(repoFullName, pr.number, {
+                status: 'merged',
+                lastAttempt: new Date().toISOString(),
+                attemptCount: prevCount + 1,
+              })
             } else if (result.splitInto.length > 0) {
               console.log(`[review] Split PR #${pr.number} into ${result.splitInto.length} child PRs: ${result.splitInto.join(', ')}`)
-            } else if (result.error !== undefined) {
-              console.warn(`[review] Failed to process PR #${pr.number}: ${result.error}`)
+              this.state.markPROutcome(repoFullName, pr.number, {
+                status: 'split',
+                lastAttempt: new Date().toISOString(),
+                attemptCount: prevCount + 1,
+              })
+            } else {
+              if (result.error !== undefined) {
+                console.warn(`[review] Failed to process PR #${pr.number}: ${result.error}`)
+              }
+              this.state.markPROutcome(
+                repoFullName,
+                pr.number,
+                this.buildFailedPROutcome(prevCount + 1, result.error),
+              )
             }
           } catch (err) {
-            console.error(`[review] Error reviewing PR #${pr.number}:`, err instanceof Error ? err.message : String(err))
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            console.error(`[review] Error reviewing PR #${pr.number}:`, errorMsg)
+            const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
+            this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, errorMsg))
           }
         }
       } catch (err) {
         console.error(`[review] Failed to list PRs for ${repo.owner}/${repo.name}:`, err instanceof Error ? err.message : String(err))
       }
     }
+  }
+
+  private buildFailedPROutcome(attemptCount: number, error?: string): PROutcome {
+    const outcome: PROutcome = {
+      status: 'failed',
+      lastAttempt: new Date().toISOString(),
+      attemptCount,
+    }
+    if (error !== undefined) {
+      outcome.error = error
+    }
+    return outcome
   }
 }

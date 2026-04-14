@@ -441,4 +441,150 @@ describe('StateManager', () => {
       expect(raw.processedIssues['owner/repo']?.['30']?.status).toBe('success')
     })
   })
+
+  describe('shouldReviewPR', () => {
+    it('returns true for a PR never seen before', () => {
+      const sm = new StateManager(makeTempStatePath())
+      expect(sm.shouldReviewPR('owner/repo', 1)).toBe(true)
+    })
+
+    it('returns true for a repo never seen before', () => {
+      const sm = new StateManager(makeTempStatePath())
+      sm.markPROutcome('owner/other', 1, {
+        status: 'merged',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 1,
+      })
+      expect(sm.shouldReviewPR('owner/repo', 1)).toBe(true)
+    })
+
+    it('returns false after a merged outcome', () => {
+      const sm = new StateManager(makeTempStatePath())
+      sm.markPROutcome('owner/repo', 5, {
+        status: 'merged',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 1,
+      })
+      expect(sm.shouldReviewPR('owner/repo', 5)).toBe(false)
+    })
+
+    it('returns false after a split outcome', () => {
+      const sm = new StateManager(makeTempStatePath())
+      sm.markPROutcome('owner/repo', 5, {
+        status: 'split',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 1,
+      })
+      expect(sm.shouldReviewPR('owner/repo', 5)).toBe(false)
+    })
+
+    it('returns true for a failed PR under max retries with backoff elapsed', () => {
+      const sm = new StateManager(makeTempStatePath(), undefined, {
+        maxAttempts: 3,
+        backoffMinutes: 0,
+      })
+      sm.markPROutcome('owner/repo', 10, {
+        status: 'failed',
+        lastAttempt: new Date(Date.now() - 1000).toISOString(),
+        attemptCount: 1,
+        error: 'tests failed',
+      })
+      expect(sm.shouldReviewPR('owner/repo', 10)).toBe(true)
+    })
+
+    it('returns false for a failed PR at max retries', () => {
+      const sm = new StateManager(makeTempStatePath(), undefined, {
+        maxAttempts: 3,
+        backoffMinutes: 0,
+      })
+      sm.markPROutcome('owner/repo', 11, {
+        status: 'failed',
+        lastAttempt: new Date(Date.now() - 1000).toISOString(),
+        attemptCount: 3,
+        error: 'exhausted',
+      })
+      expect(sm.shouldReviewPR('owner/repo', 11)).toBe(false)
+    })
+
+    it('returns false for a failed PR within backoff period', () => {
+      const sm = new StateManager(makeTempStatePath(), undefined, {
+        maxAttempts: 5,
+        backoffMinutes: 60,
+      })
+      sm.markPROutcome('owner/repo', 12, {
+        status: 'failed',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 1,
+        error: 'transient',
+      })
+      expect(sm.shouldReviewPR('owner/repo', 12)).toBe(false)
+    })
+  })
+
+  describe('markPROutcome', () => {
+    it('persists a merged outcome', () => {
+      const statePath = makeTempStatePath()
+      const sm = new StateManager(statePath)
+      sm.markPROutcome('owner/repo', 7, {
+        status: 'merged',
+        lastAttempt: '2024-01-01T00:00:00.000Z',
+        attemptCount: 1,
+      })
+
+      const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as {
+        reviewedPRs: Record<string, Record<string, { status: string }>>
+      }
+      expect(raw.reviewedPRs['owner/repo']?.['7']?.status).toBe('merged')
+    })
+
+    it('persists a failed outcome with error', () => {
+      const statePath = makeTempStatePath()
+      const sm = new StateManager(statePath)
+      sm.markPROutcome('acme/api', 99, {
+        status: 'failed',
+        lastAttempt: '2024-06-15T12:00:00.000Z',
+        attemptCount: 2,
+        error: 'tests failed',
+      })
+
+      const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as {
+        reviewedPRs: Record<string, Record<string, { status: string; error?: string; attemptCount: number }>>
+      }
+      const outcome = raw.reviewedPRs['acme/api']?.['99']
+      expect(outcome?.status).toBe('failed')
+      expect(outcome?.error).toBe('tests failed')
+      expect(outcome?.attemptCount).toBe(2)
+    })
+
+    it('a new instance sees the persisted outcome', () => {
+      const statePath = makeTempStatePath()
+      const sm1 = new StateManager(statePath)
+      sm1.markPROutcome('owner/repo', 3, {
+        status: 'merged',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 1,
+      })
+
+      const sm2 = new StateManager(statePath)
+      expect(sm2.shouldReviewPR('owner/repo', 3)).toBe(false)
+    })
+  })
+
+  describe('getPRAttemptCount', () => {
+    it('returns 0 for a PR never seen before', () => {
+      const sm = new StateManager(makeTempStatePath())
+      expect(sm.getPRAttemptCount('owner/repo', 1)).toBe(0)
+    })
+
+    it('returns the stored attempt count', () => {
+      const sm = new StateManager(makeTempStatePath())
+      sm.markPROutcome('owner/repo', 5, {
+        status: 'failed',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 3,
+        error: 'err',
+      })
+      expect(sm.getPRAttemptCount('owner/repo', 5)).toBe(3)
+    })
+  })
 })

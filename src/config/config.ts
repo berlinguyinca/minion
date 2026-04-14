@@ -43,6 +43,8 @@ const PipelineConfigSchema = z.object({
   mergeDraftPRs: z.boolean().default(false),
   autoMerge: z.boolean().default(true),
   autoMergeRequireTests: z.boolean().default(true),
+  maxPollRuns: z.number().int().positive().optional(),
+  maxConsecutiveFailures: z.number().int().positive().default(5),
 })
 
 type ZodParsed = z.infer<typeof PipelineConfigSchema>
@@ -103,6 +105,14 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
 
   if (!parsed.autoMergeRequireTests) {
     config.autoMergeRequireTests = parsed.autoMergeRequireTests
+  }
+
+  if (parsed.maxPollRuns !== undefined) {
+    config.maxPollRuns = parsed.maxPollRuns
+  }
+
+  if (parsed.maxConsecutiveFailures !== 5) {
+    config.maxConsecutiveFailures = parsed.maxConsecutiveFailures
   }
 
   return config

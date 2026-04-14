@@ -136,11 +136,21 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
     process.on('SIGINT', onSignal)
     process.on('SIGTERM', onSignal)
 
+    const maxRuns = config.maxPollRuns ?? Infinity
+    const maxConsecFail = config.maxConsecutiveFailures ?? 5
+    let totalRuns = 0
+    let consecutiveFailures = 0
     let firstRun = true
+
     while (!shutdown) {
       const code = await runner.run()
+      totalRuns++
+
       if (code !== 0) {
-        console.warn(`[poll] Run finished with failures (exit code ${code})`)
+        consecutiveFailures++
+        console.warn(`[poll] Run finished with failures (exit code ${code}) — consecutive failures: ${consecutiveFailures}/${maxConsecFail}`)
+      } else {
+        consecutiveFailures = 0
       }
 
       // Star prompt on first run only
@@ -149,8 +159,20 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
         firstRun = false
       }
 
+      // Circuit breaker: too many consecutive failures
+      if (consecutiveFailures >= maxConsecFail) {
+        console.error(`[poll] Circuit breaker: ${consecutiveFailures} consecutive failures — stopping poll loop.`)
+        return 1
+      }
+
+      // Max runs cap
+      if (totalRuns >= maxRuns) {
+        console.log(`[poll] Reached max poll runs (${maxRuns}) — stopping.`)
+        break
+      }
+
       if (shutdown) break
-      console.log(`[poll] Next run in ${pollIntervalMs / 1000}s...`)
+      console.log(`[poll] Next run in ${pollIntervalMs / 1000}s... (run ${totalRuns}${maxRuns < Infinity ? `/${maxRuns}` : ''})`)
       await sleep(pollIntervalMs)
     }
 

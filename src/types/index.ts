@@ -68,6 +68,8 @@ export interface PipelineConfig {
   mergeDraftPRs?: boolean;
   autoMerge?: boolean;
   autoMergeRequireTests?: boolean;
+  maxPollRuns?: number;
+  maxConsecutiveFailures?: number;
 }
 
 export interface QuotaState {
@@ -84,8 +86,16 @@ export interface IssueOutcome {
   prUrl?: string
 }
 
+export interface PROutcome {
+  status: 'merged' | 'split' | 'failed'
+  lastAttempt: string        // ISO 8601
+  attemptCount: number
+  error?: string
+}
+
 export interface PipelineState {
   processedIssues: Record<string, Record<number, IssueOutcome>>; // "owner/name" -> { issueNumber: outcome }
+  reviewedPRs?: Record<string, Record<number, PROutcome>>;      // "owner/name" -> { prNumber: outcome }
   quota: Record<string, QuotaState>; // keyed by AIModel values (extensible)
   starPromptSeen?: boolean;
 }

@@ -135,17 +135,18 @@ export class MAPWrapper implements AIProvider {
 
     // v2 parsing path
     if (result.version === 2) {
+      const v2Result = result as MAPResultPayloadV2
       if (!result.success) {
         throw new AIInvocationError(
           'map', 1,
-          'MAP pipeline failed: ' + (result.error ?? '').slice(0, 200),
+          'MAP pipeline failed: ' + (v2Result.error ?? '').slice(0, 200),
         )
       }
       const filesWritten = scanModifiedFiles(workingDir, beforeMs)
       return {
         success: true,
         filesWritten,
-        stdout: JSON.stringify({ version: 2, steps: result.steps, dag: result.dag }),
+        stdout: JSON.stringify({ version: 2, steps: v2Result.steps, dag: v2Result.dag }),
         stderr: '',
       }
     }

@@ -11,7 +11,7 @@
  */
 
 import { writeFileSync, readFileSync, existsSync, renameSync } from 'node:fs'
-import type { PipelineState, AIModel, PipelineConfig, IssueOutcome, RetryConfig } from '../types/index.js'
+import type { PipelineState, AIModel, PipelineConfig, IssueOutcome, PROutcome, RetryConfig } from '../types/index.js'
 
 const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_BACKOFF_MINUTES = 60
@@ -92,11 +92,22 @@ export class StateManager {
     }
 
     const raw = readFileSync(this.statePath, 'utf-8')
-    const parsed = JSON.parse(raw) as { processedIssues: Record<string, unknown>; quota: PipelineState['quota'] }
+    const parsed = JSON.parse(raw) as {
+      processedIssues: Record<string, unknown>
+      reviewedPRs?: PipelineState['reviewedPRs']
+      quota: PipelineState['quota']
+      starPromptSeen?: boolean
+    }
 
     const state: PipelineState = {
       processedIssues: migrateProcessedIssues(parsed.processedIssues),
       quota: parsed.quota,
+    }
+    if (parsed.reviewedPRs !== undefined) {
+      state.reviewedPRs = parsed.reviewedPRs
+    }
+    if (parsed.starPromptSeen !== undefined) {
+      state.starPromptSeen = parsed.starPromptSeen
     }
 
     mergeQuotaLimits(state, this.quotaLimits)
@@ -224,6 +235,51 @@ export class StateManager {
   markStarPromptSeen(): void {
     const state = this.load()
     state.starPromptSeen = true
+    this.save(state)
+  }
+
+  /**
+   * Returns true if the PR should be reviewed/merged:
+   * - Never seen before → true
+   * - Previous 'merged' or 'split' → false (terminal states)
+   * - Previous 'failed' AND under max retries AND backoff elapsed → true
+   * - Previous 'failed' at/over max retries → false
+   */
+  shouldReviewPR(repoFullName: string, prNumber: number): boolean {
+    const state = this.load()
+    const repoPRs = state.reviewedPRs?.[repoFullName]
+    if (repoPRs === undefined) return true
+
+    const outcome = repoPRs[prNumber]
+    if (outcome === undefined) return true
+    if (outcome.status === 'merged' || outcome.status === 'split') return false
+
+    // Failed: check retry eligibility
+    if (outcome.attemptCount >= this.maxAttempts) return false
+
+    const elapsed = Date.now() - new Date(outcome.lastAttempt).getTime()
+    return elapsed >= this.backoffMs
+  }
+
+  /** Get the current attempt count for a PR (0 if never seen). */
+  getPRAttemptCount(repoFullName: string, prNumber: number): number {
+    const state = this.load()
+    const outcome = state.reviewedPRs?.[repoFullName]?.[prNumber]
+    return outcome?.attemptCount ?? 0
+  }
+
+  /** Record the outcome of reviewing/merging a PR. */
+  markPROutcome(repoFullName: string, prNumber: number, outcome: PROutcome): void {
+    const state = this.load()
+    if (state.reviewedPRs === undefined) {
+      state.reviewedPRs = {}
+    }
+    let repoPRs = state.reviewedPRs[repoFullName]
+    if (repoPRs === undefined) {
+      repoPRs = {}
+      state.reviewedPRs[repoFullName] = repoPRs
+    }
+    repoPRs[prNumber] = outcome
     this.save(state)
   }
 }

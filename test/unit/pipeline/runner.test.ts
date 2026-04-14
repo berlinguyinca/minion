@@ -146,7 +146,11 @@ describe('PipelineRunner', () => {
       mergePullRequest: vi.fn().mockResolvedValue(undefined),
     }
 
-    stateMock = {}
+    stateMock = {
+      shouldReviewPR: vi.fn().mockReturnValue(true),
+      markPROutcome: vi.fn(),
+      getPRAttemptCount: vi.fn().mockReturnValue(0),
+    }
     aiMock = {}
 
     vi.mocked(IssueProcessor).mockImplementation(() => processorMock as unknown as IssueProcessor)
@@ -495,5 +499,167 @@ describe('PipelineRunner', () => {
     // Issue processing should still run
     expect(processorMock.processIssue).toHaveBeenCalledTimes(1)
     expect(code).toBe(0)
+  })
+
+  // -------------------------------------------------------------------------
+  // Failsafe: PR review state tracking
+  // -------------------------------------------------------------------------
+
+  it('auto-review phase: skips PRs where shouldReviewPR returns false', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    ;(stateMock.shouldReviewPR as ReturnType<typeof vi.fn>).mockReturnValue(false)
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+
+    expect(reviewProcessorMock.reviewPR).not.toHaveBeenCalled()
+  })
+
+  it('auto-review phase: marks merged outcome in state', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    reviewProcessorMock.reviewPR.mockResolvedValue({
+      prNumber: 10,
+      repoFullName: 'acme/api',
+      verdict: 'merge',
+      merged: true,
+      splitInto: [],
+    })
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'merged', attemptCount: 1 }),
+    )
+  })
+
+  it('auto-review phase: marks split outcome in state', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    reviewProcessorMock.reviewPR.mockResolvedValue({
+      prNumber: 10,
+      repoFullName: 'acme/api',
+      verdict: 'split',
+      merged: false,
+      splitInto: [11, 12],
+    })
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'split', attemptCount: 1 }),
+    )
+  })
+
+  it('auto-review phase: marks failed outcome on error', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    reviewProcessorMock.reviewPR.mockRejectedValue(new Error('AI crash'))
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    errorSpy.mockRestore()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'failed', error: 'AI crash' }),
+    )
+  })
+
+  it('auto-review phase: marks failed outcome when review returns error', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    reviewProcessorMock.reviewPR.mockResolvedValue({
+      prNumber: 10,
+      repoFullName: 'acme/api',
+      verdict: 'merge',
+      merged: false,
+      splitInto: [],
+      error: 'tests failed',
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    warnSpy.mockRestore()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'failed', error: 'tests failed' }),
+    )
+  })
+
+  it('merge phase: skips PRs where shouldReviewPR returns false', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([
+      { id: 1, body: '/merge', user: 'dev', createdAt: '2024-01-01T00:00:00Z' },
+    ])
+    ;(stateMock.shouldReviewPR as ReturnType<typeof vi.fn>).mockReturnValue(false)
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+
+    expect(mergeProcessorMock.processMergeRequest).not.toHaveBeenCalled()
+  })
+
+  it('merge phase: marks merged outcome in state', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([
+      { id: 1, body: '/merge', user: 'dev', createdAt: '2024-01-01T00:00:00Z' },
+    ])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'merged', attemptCount: 1 }),
+    )
+  })
+
+  it('merge phase: marks failed outcome when merge fails', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([
+      { id: 1, body: '/merge', user: 'dev', createdAt: '2024-01-01T00:00:00Z' },
+    ])
+    mergeProcessorMock.processMergeRequest.mockResolvedValue({
+      prNumber: 10,
+      repoFullName: 'acme/api',
+      merged: false,
+      conflictsResolved: 0,
+      error: 'conflicts unresolvable',
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    warnSpy.mockRestore()
+    logSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({ status: 'failed', error: 'conflicts unresolvable' }),
+    )
   })
 })
