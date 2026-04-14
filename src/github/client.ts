@@ -135,6 +135,22 @@ export class GitHubClient {
     }
   }
 
+  async removeLabel(owner: string, name: string, prNumber: number, label: string): Promise<void> {
+    try {
+      await this.octokit.issues.removeLabel({
+        owner,
+        repo: name,
+        issue_number: prNumber,
+        name: label,
+      })
+    } catch (err) {
+      if (isOctokitError(err) && err.status === 404) {
+        return // Label was already removed
+      }
+      wrapError(err, owner, name)
+    }
+  }
+
   async postIssueComment(
     owner: string,
     name: string,

@@ -25,15 +25,18 @@
   - class GitHubClient
   - interface CreatePRParams
   - interface PRResult
-- `src/index.ts` — function run: (argv) => void
+- `src/index.ts` — function showStarPrompt: (state) => Promise<void>, function run: (argv) => void
 - `src/pipeline/issue-processor.ts` — class IssueProcessor
 - `src/pipeline/merge-processor.ts` — class MergeProcessor
+- `src/pipeline/pr-review-processor.ts` — class PRReviewProcessor
 - `src/pipeline/prompts.ts`
   - function buildSpecPrompt: (issue) => string
   - function buildImplementationPrompt: (spec, repoName) => string
   - function buildReviewPrompt: (diff) => string
   - function buildFollowUpPrompt: (comments) => string
-  - function buildConflictResolutionPrompt: (conflict) => string
+  - function buildAutoReviewPrompt: (diff) => string
+  - function buildAutoReviewFixPrompt: (comments) => string
+  - _...2 more_
 - `src/pipeline/runner.ts` — class PipelineRunner
 - `src/pipeline/spec-cache.ts` — class SpecCache
 - `src/pipeline/test-runner.ts`

@@ -58,6 +58,8 @@ export interface PipelineConfig {
   mergeCommentTrigger?: string;
   mergeMethod?: 'merge' | 'squash' | 'rebase';
   mergeDraftPRs?: boolean;
+  autoReviewLabel?: string;
+  maxReviewRounds?: number;
 }
 
 export interface QuotaState {
@@ -140,6 +142,14 @@ export interface MergeResult {
   repoFullName: string
   merged: boolean
   conflictsResolved: number
+  error?: string
+}
+
+export interface PRReviewResult {
+  prNumber: number
+  repoFullName: string
+  merged: boolean
+  reviewRounds: number
   error?: string
 }
 

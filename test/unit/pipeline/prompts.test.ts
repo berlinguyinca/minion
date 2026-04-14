@@ -4,6 +4,9 @@ import {
   buildImplementationPrompt,
   buildReviewPrompt,
   buildFollowUpPrompt,
+  buildAutoReviewPrompt,
+  buildAutoReviewFixPrompt,
+  buildHumanClarificationPrompt,
 } from '../../../src/pipeline/prompts.js'
 import type { Issue, ReviewComment } from '../../../src/types/index.js'
 
@@ -129,6 +132,115 @@ describe('buildFollowUpPrompt', () => {
 
   it('does not contain ${undefined} or [object Object]', () => {
     const prompt = buildFollowUpPrompt(comments)
+    expect(prompt).not.toContain('${undefined}')
+    expect(prompt).not.toContain('[object Object]')
+  })
+})
+
+describe('buildAutoReviewPrompt', () => {
+  const diff = `diff --git a/src/index.ts b/src/index.ts
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1,3 +1,5 @@
++import { rateLimiter } from './middleware/rate-limit'
++
+ export function main() {
+   console.log('hello')
+ }`
+
+  it('contains the diff text', () => {
+    expect(buildAutoReviewPrompt(diff)).toContain(diff)
+  })
+
+  it('contains instruction to evaluate for merge readiness', () => {
+    const prompt = buildAutoReviewPrompt(diff)
+    expect(prompt.toLowerCase()).toMatch(/merge/i)
+  })
+
+  it('mentions returning JSON with approved and comments fields', () => {
+    const prompt = buildAutoReviewPrompt(diff)
+    expect(prompt).toContain('approved')
+    expect(prompt).toContain('comments')
+  })
+
+  it('does not return empty string', () => {
+    expect(buildAutoReviewPrompt(diff).length).toBeGreaterThan(0)
+  })
+
+  it('does not contain ${undefined} or [object Object]', () => {
+    const prompt = buildAutoReviewPrompt(diff)
+    expect(prompt).not.toContain('${undefined}')
+    expect(prompt).not.toContain('[object Object]')
+  })
+})
+
+describe('buildAutoReviewFixPrompt', () => {
+  const comments: ReviewComment[] = [
+    { path: 'src/middleware/rate-limit.ts', line: 10, body: 'Missing error handling here' },
+    { path: 'src/index.ts', line: 5, body: 'This import is unused' },
+  ]
+
+  it('contains each comment body', () => {
+    const prompt = buildAutoReviewFixPrompt(comments)
+    for (const comment of comments) {
+      expect(prompt).toContain(comment.body)
+    }
+  })
+
+  it('contains each file path', () => {
+    const prompt = buildAutoReviewFixPrompt(comments)
+    for (const comment of comments) {
+      expect(prompt).toContain(comment.path)
+    }
+  })
+
+  it('contains instruction to fix the issues', () => {
+    const prompt = buildAutoReviewFixPrompt(comments)
+    expect(prompt.toLowerCase()).toMatch(/fix|address|resolve/i)
+  })
+
+  it('does not return empty string', () => {
+    expect(buildAutoReviewFixPrompt(comments).length).toBeGreaterThan(0)
+  })
+
+  it('does not contain ${undefined} or [object Object]', () => {
+    const prompt = buildAutoReviewFixPrompt(comments)
+    expect(prompt).not.toContain('${undefined}')
+    expect(prompt).not.toContain('[object Object]')
+  })
+})
+
+describe('buildHumanClarificationPrompt', () => {
+  const comments: ReviewComment[] = [
+    { path: 'src/index.ts', line: 5, body: 'Potential null dereference' },
+  ]
+
+  it('contains the round count', () => {
+    const prompt = buildHumanClarificationPrompt(comments, 3)
+    expect(prompt).toContain('3')
+  })
+
+  it('contains the comment body', () => {
+    const prompt = buildHumanClarificationPrompt(comments, 2)
+    expect(prompt).toContain('Potential null dereference')
+  })
+
+  it('contains the file path', () => {
+    const prompt = buildHumanClarificationPrompt(comments, 1)
+    expect(prompt).toContain('src/index.ts')
+  })
+
+  it('asks for human action', () => {
+    const prompt = buildHumanClarificationPrompt(comments, 1)
+    expect(prompt.toLowerCase()).toMatch(/review|fix|guidance/i)
+  })
+
+  it('does not return empty string', () => {
+    expect(buildHumanClarificationPrompt(comments, 1).length).toBeGreaterThan(0)
+  })
+
+  it('does not contain ${undefined} or [object Object]', () => {
+    const prompt = buildHumanClarificationPrompt(comments, 1)
     expect(prompt).not.toContain('${undefined}')
     expect(prompt).not.toContain('[object Object]')
   })

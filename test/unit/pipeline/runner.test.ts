@@ -13,6 +13,10 @@ vi.mock('../../../src/pipeline/merge-processor.js', () => ({
   MergeProcessor: vi.fn(),
 }))
 
+vi.mock('../../../src/pipeline/pr-review-processor.js', () => ({
+  PRReviewProcessor: vi.fn(),
+}))
+
 vi.mock('../../../src/pipeline/spec-cache.js', () => ({
   SpecCache: vi.fn(),
 }))
@@ -42,6 +46,7 @@ vi.mock('../../../src/git/index.js', () => ({
 import { PipelineRunner } from '../../../src/pipeline/runner.js'
 import { IssueProcessor } from '../../../src/pipeline/issue-processor.js'
 import { MergeProcessor } from '../../../src/pipeline/merge-processor.js'
+import { PRReviewProcessor } from '../../../src/pipeline/pr-review-processor.js'
 import { GitHubClient } from '../../../src/github/client.js'
 import { StateManager } from '../../../src/config/state.js'
 import { AIRouter } from '../../../src/ai/router.js'
@@ -87,6 +92,7 @@ const baseConfig: PipelineConfig = {
 describe('PipelineRunner', () => {
   let processorMock: { processIssue: ReturnType<typeof vi.fn> }
   let mergeProcessorMock: { processMergeRequest: ReturnType<typeof vi.fn> }
+  let prReviewProcessorMock: { processReview: ReturnType<typeof vi.fn> }
   let githubMock: {
     fetchOpenIssues: ReturnType<typeof vi.fn>
     listOpenPRsWithLabel: ReturnType<typeof vi.fn>
@@ -121,6 +127,15 @@ describe('PipelineRunner', () => {
       }),
     }
 
+    prReviewProcessorMock = {
+      processReview: vi.fn().mockResolvedValue({
+        prNumber: 1,
+        repoFullName: 'acme/api',
+        merged: true,
+        reviewRounds: 1,
+      }),
+    }
+
     githubMock = {
       fetchOpenIssues: vi.fn().mockResolvedValue([makeIssue(1)]),
       listOpenPRsWithLabel: vi.fn().mockResolvedValue([]),
@@ -133,6 +148,7 @@ describe('PipelineRunner', () => {
 
     vi.mocked(IssueProcessor).mockImplementation(() => processorMock as unknown as IssueProcessor)
     vi.mocked(MergeProcessor).mockImplementation(() => mergeProcessorMock as unknown as MergeProcessor)
+    vi.mocked(PRReviewProcessor).mockImplementation(() => prReviewProcessorMock as unknown as PRReviewProcessor)
     vi.mocked(GitHubClient).mockImplementation(() => githubMock as unknown as GitHubClient)
     vi.mocked(StateManager).mockImplementation(() => stateMock as unknown as StateManager)
     vi.mocked(AIRouter).mockImplementation(() => aiMock as unknown as AIRouter)
@@ -407,5 +423,158 @@ describe('PipelineRunner', () => {
     expect(mergeProcessorMock.processMergeRequest).not.toHaveBeenCalled()
     // Issue processing continues normally
     expect(processorMock.processIssue).toHaveBeenCalledTimes(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // Auto-review phase
+  // -------------------------------------------------------------------------
+
+  it('auto-review phase: runs between merge and issue processing', async () => {
+    const callOrder: string[] = []
+
+    githubMock.listOpenPRsWithLabel.mockImplementation((_owner: string, _name: string, label: string) => {
+      if (label === 'ai-generated') {
+        callOrder.push('merge-listPRs')
+      } else if (label === 'auto-review') {
+        callOrder.push('autoReview-listPRs')
+      }
+      return Promise.resolve([])
+    })
+
+    githubMock.fetchOpenIssues.mockImplementation(() => {
+      callOrder.push('fetchOpenIssues')
+      return Promise.resolve([makeIssue(1)])
+    })
+
+    processorMock.processIssue.mockImplementation(() => {
+      callOrder.push('processIssue')
+      return Promise.resolve({
+        success: true,
+        isDraft: false,
+        testsPassed: true,
+        issueNumber: 1,
+        repoFullName: 'acme/api',
+        modelUsed: 'claude',
+        filesChanged: [],
+      })
+    })
+
+    await runner.run()
+
+    const mergeIdx = callOrder.indexOf('merge-listPRs')
+    const reviewIdx = callOrder.indexOf('autoReview-listPRs')
+    const fetchIdx = callOrder.indexOf('fetchOpenIssues')
+    expect(mergeIdx).toBeLessThan(reviewIdx)
+    expect(reviewIdx).toBeLessThan(fetchIdx)
+  })
+
+  it('auto-review phase: calls processReview for PRs with auto-review label', async () => {
+    const reviewPR = makePR(20)
+
+    githubMock.listOpenPRsWithLabel.mockImplementation((_owner: string, _name: string, label: string) => {
+      if (label === 'auto-review') {
+        return Promise.resolve([reviewPR])
+      }
+      return Promise.resolve([])
+    })
+
+    await runner.run()
+
+    expect(prReviewProcessorMock.processReview).toHaveBeenCalledWith(repo1, reviewPR)
+  })
+
+  it('auto-review phase: uses configured autoReviewLabel', async () => {
+    const config: PipelineConfig = { repos: [repo1], maxIssuesPerRun: 10, autoReviewLabel: 'ready-for-review' }
+    const customRunner = new PipelineRunner(
+      config,
+      githubMock as unknown as GitHubClient,
+      aiMock as unknown as AIRouter,
+      stateMock as unknown as StateManager,
+    )
+
+    await customRunner.run()
+
+    expect(githubMock.listOpenPRsWithLabel).toHaveBeenCalledWith('acme', 'api', 'ready-for-review')
+  })
+
+  it('auto-review phase: continues issue processing when listOpenPRsWithLabel throws', async () => {
+    githubMock.listOpenPRsWithLabel.mockRejectedValue(new Error('GitHub unavailable'))
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const code = await runner.run()
+    errorSpy.mockRestore()
+
+    // Issue processing should still run
+    expect(processorMock.processIssue).toHaveBeenCalledTimes(1)
+    expect(code).toBe(0)
+  })
+
+  it('auto-review phase: continues when individual PR review throws', async () => {
+    const reviewPR = makePR(20)
+
+    githubMock.listOpenPRsWithLabel.mockImplementation((_owner: string, _name: string, label: string) => {
+      if (label === 'auto-review') {
+        return Promise.resolve([reviewPR])
+      }
+      return Promise.resolve([])
+    })
+
+    prReviewProcessorMock.processReview.mockRejectedValue(new Error('review crashed'))
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await runner.run()
+    errorSpy.mockRestore()
+
+    // Issue processing should still proceed
+    expect(processorMock.processIssue).toHaveBeenCalledTimes(1)
+  })
+
+  it('auto-review phase: logs merged message when review succeeds', async () => {
+    const reviewPR = makePR(20)
+
+    githubMock.listOpenPRsWithLabel.mockImplementation((_owner: string, _name: string, label: string) => {
+      if (label === 'auto-review') {
+        return Promise.resolve([reviewPR])
+      }
+      return Promise.resolve([])
+    })
+
+    prReviewProcessorMock.processReview.mockResolvedValue({
+      prNumber: 20,
+      repoFullName: 'acme/api',
+      merged: true,
+      reviewRounds: 1,
+    })
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/auto-review.*Merged PR #20/))
+    logSpy.mockRestore()
+  })
+
+  it('auto-review phase: logs warning when review does not merge', async () => {
+    const reviewPR = makePR(20)
+
+    githubMock.listOpenPRsWithLabel.mockImplementation((_owner: string, _name: string, label: string) => {
+      if (label === 'auto-review') {
+        return Promise.resolve([reviewPR])
+      }
+      return Promise.resolve([])
+    })
+
+    prReviewProcessorMock.processReview.mockResolvedValue({
+      prNumber: 20,
+      repoFullName: 'acme/api',
+      merged: false,
+      reviewRounds: 3,
+      error: 'max review rounds exceeded',
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    await runner.run()
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/auto-review.*PR #20 not merged/))
+    warnSpy.mockRestore()
   })
 })

@@ -5,6 +5,7 @@ import type { Mock } from 'vitest'
 vi.mock('@octokit/rest', () => {
   const mockListForRepo = vi.fn()
   const mockAddLabels = vi.fn()
+  const mockRemoveLabel = vi.fn()
   const mockCreateComment = vi.fn()
   const mockCreatePR = vi.fn()
   const mockCreateReview = vi.fn()
@@ -12,18 +13,23 @@ vi.mock('@octokit/rest', () => {
   const mockGetRef = vi.fn()
   const mockDeleteRef = vi.fn()
   const mockListPRs = vi.fn()
+  const mockListComments = vi.fn()
+  const mockMergePR = vi.fn()
 
   const mockOctokit = {
     issues: {
       listForRepo: mockListForRepo,
       addLabels: mockAddLabels,
+      removeLabel: mockRemoveLabel,
       createComment: mockCreateComment,
+      listComments: mockListComments,
     },
     pulls: {
       create: mockCreatePR,
       createReview: mockCreateReview,
       get: mockGetPR,
       list: mockListPRs,
+      merge: mockMergePR,
     },
     git: {
       getRef: mockGetRef,
@@ -47,13 +53,16 @@ function getMockOctokit() {
     issues: {
       listForRepo: Mock
       addLabels: Mock
+      removeLabel: Mock
       createComment: Mock
+      listComments: Mock
     }
     pulls: {
       create: Mock
       createReview: Mock
       get: Mock
       list: Mock
+      merge: Mock
     }
     git: {
       getRef: Mock
@@ -701,6 +710,126 @@ describe('GitHubClient', () => {
       mocks.pulls.createReview.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }))
       const client = new GitHubClient()
       await expect(client.postReviewComments('acme', 'api', 42, [])).rejects.toThrow(/not found|no access/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // removeLabel
+  // -----------------------------------------------------------------------
+  describe('removeLabel', () => {
+    it('calls issues.removeLabel with correct params', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.removeLabel.mockResolvedValueOnce({ data: {} })
+
+      const client = new GitHubClient()
+      await client.removeLabel('acme', 'api', 42, 'auto-review')
+
+      expect(mocks.issues.removeLabel).toHaveBeenCalledWith({
+        owner: 'acme',
+        repo: 'api',
+        issue_number: 42,
+        name: 'auto-review',
+      })
+    })
+
+    it('silently succeeds when label is already removed (404)', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.removeLabel.mockRejectedValueOnce(Object.assign(new Error('Not Found'), { status: 404 }))
+
+      const client = new GitHubClient()
+      // Should not throw
+      await expect(client.removeLabel('acme', 'api', 42, 'auto-review')).resolves.toBeUndefined()
+    })
+
+    it('re-throws 401 errors with GITHUB_TOKEN message', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.removeLabel.mockRejectedValueOnce(Object.assign(new Error('Bad credentials'), { status: 401 }))
+
+      const client = new GitHubClient()
+      await expect(client.removeLabel('acme', 'api', 42, 'auto-review')).rejects.toThrow(/GITHUB_TOKEN/i)
+    })
+
+    it('re-throws non-Octokit errors', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.removeLabel.mockRejectedValueOnce(new Error('network error'))
+
+      const client = new GitHubClient()
+      await expect(client.removeLabel('acme', 'api', 42, 'auto-review')).rejects.toThrow('network error')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // mergePullRequest
+  // -----------------------------------------------------------------------
+  describe('mergePullRequest', () => {
+    it('calls pulls.merge with correct params and default method', async () => {
+      const mocks = getMockOctokit()
+      mocks.pulls.merge.mockResolvedValueOnce({ data: {} })
+
+      const client = new GitHubClient()
+      await client.mergePullRequest('acme', 'api', 42)
+
+      expect(mocks.pulls.merge).toHaveBeenCalledWith({
+        owner: 'acme',
+        repo: 'api',
+        pull_number: 42,
+        merge_method: 'merge',
+      })
+    })
+
+    it('calls pulls.merge with specified method', async () => {
+      const mocks = getMockOctokit()
+      mocks.pulls.merge.mockResolvedValueOnce({ data: {} })
+
+      const client = new GitHubClient()
+      await client.mergePullRequest('acme', 'api', 42, 'squash')
+
+      expect(mocks.pulls.merge).toHaveBeenCalledWith({
+        owner: 'acme',
+        repo: 'api',
+        pull_number: 42,
+        merge_method: 'squash',
+      })
+    })
+
+    it('re-throws 401 errors with GITHUB_TOKEN message', async () => {
+      const mocks = getMockOctokit()
+      mocks.pulls.merge.mockRejectedValueOnce(Object.assign(new Error('Bad credentials'), { status: 401 }))
+
+      const client = new GitHubClient()
+      await expect(client.mergePullRequest('acme', 'api', 42)).rejects.toThrow(/GITHUB_TOKEN/i)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // listPRComments
+  // -----------------------------------------------------------------------
+  describe('listPRComments', () => {
+    it('returns mapped comment objects', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listComments.mockResolvedValueOnce({
+        data: [
+          { id: 1, body: 'looks good', user: { login: 'dev' }, created_at: '2024-01-01T00:00:00Z' },
+          { id: 2, body: null, user: null, created_at: '2024-01-02T00:00:00Z' },
+        ],
+      })
+
+      const client = new GitHubClient()
+      const comments = await client.listPRComments('acme', 'api', 42)
+
+      expect(comments).toHaveLength(2)
+      expect(comments[0]).toEqual({
+        id: 1,
+        body: 'looks good',
+        user: 'dev',
+        createdAt: '2024-01-01T00:00:00Z',
+      })
+      expect(comments[1]).toEqual({
+        id: 2,
+        body: '',
+        user: '',
+        createdAt: '2024-01-02T00:00:00Z',
+      })
     })
   })
 })

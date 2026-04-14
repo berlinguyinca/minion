@@ -156,4 +156,40 @@ describe('loadConfig', () => {
     expect(config.quotaLimits?.codex).toBe(30)
   })
 
+  it('defaults autoReviewLabel to undefined (uses default "auto-review")', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({ repos: [] }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.autoReviewLabel).toBeUndefined()
+  })
+
+  it('maps autoReviewLabel when non-default value provided', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({ repos: [], autoReviewLabel: 'ready-for-review' }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.autoReviewLabel).toBe('ready-for-review')
+  })
+
+  it('defaults maxReviewRounds to undefined (uses default 3)', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({ repos: [] }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.maxReviewRounds).toBeUndefined()
+  })
+
+  it('maps maxReviewRounds when non-default value provided', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({ repos: [], maxReviewRounds: 5 }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.maxReviewRounds).toBe(5)
+  })
+
 })

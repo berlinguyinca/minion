@@ -41,6 +41,8 @@ const PipelineConfigSchema = z.object({
   mergeCommentTrigger: z.string().default('/merge'),
   mergeMethod: z.enum(['merge', 'squash', 'rebase']).default('merge'),
   mergeDraftPRs: z.boolean().default(false),
+  autoReviewLabel: z.string().default('auto-review'),
+  maxReviewRounds: z.number().int().positive().default(3),
 })
 
 type ZodParsed = z.infer<typeof PipelineConfigSchema>
@@ -93,6 +95,14 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
 
   if (parsed.mergeDraftPRs) {
     config.mergeDraftPRs = parsed.mergeDraftPRs
+  }
+
+  if (parsed.autoReviewLabel !== 'auto-review') {
+    config.autoReviewLabel = parsed.autoReviewLabel
+  }
+
+  if (parsed.maxReviewRounds !== 3) {
+    config.maxReviewRounds = parsed.maxReviewRounds
   }
 
   return config
