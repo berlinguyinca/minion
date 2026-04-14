@@ -164,6 +164,11 @@ export function VimProvider({ children, onAction, onCommand }: VimProviderProps)
         return
       }
 
+      if (input === '?') {
+        onActionRef.current?.('help')
+        return
+      }
+
       // Double-key sequences: gg (jump top), dd (clear field)
       if (input === 'g' || input === 'd') {
         const prev = lastKeyRef.current

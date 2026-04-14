@@ -62,12 +62,12 @@ export function TextField({ label, value, onChange, active, multiline }: TextFie
   }, [eventEmitter])
 
   return (
-    <Box>
+    <Box overflowX="hidden">
       <Text color={colors.banana}>{label}: </Text>
       {value.length === 0 && !active ? (
         <Text color={colors.dim}>(empty)</Text>
       ) : (
-        <Text>
+        <Text wrap="truncate-end">
           {value}
           {isEditing ? <Text color={colors.banana}>█</Text> : null}
         </Text>

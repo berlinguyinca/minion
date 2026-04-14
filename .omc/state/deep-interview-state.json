@@ -1,0 +1,19 @@
+{
+  "active": true,
+  "current_phase": "interview",
+  "task_description": "TUI for rapid GitHub issue creation with 70/30 split layout",
+  "interview_id": "tui-issue-creator-001",
+  "type": "brownfield",
+  "initial_idea": "Add a TUI with 70/30 split: 70% for issue creation (title, description, tags, fire-and-forget), 30% for repo selector on the right. Tab between panels, arrow keys + enter for repo selection, keyboard shortcuts for issue creation, plus search.",
+  "rounds": "[]",
+  "current_ambiguity": "1.0",
+  "threshold": "0.2",
+  "challenge_modes_used": "[]",
+  "ontology_snapshots": "[]",
+  "_meta": {
+    "mode": "deep-interview",
+    "sessionId": null,
+    "updatedAt": "2026-04-14T06:23:22.897Z",
+    "updatedBy": "state_write_tool"
+  }
+}

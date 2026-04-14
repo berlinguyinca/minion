@@ -4,8 +4,6 @@
   - function invokeProcess: (options) => Promise<InvokeProcessResult>
   - interface InvokeProcessOptions
   - interface InvokeProcessResult
-- `src/ai/claude-wrapper.ts` — class ClaudeWrapper
-- `src/ai/codex-wrapper.ts` — class CodexWrapper
 - `src/ai/errors.ts`
   - function detectRateLimitError: (model, exitCode, rawOutput) => AIRateLimitError | undefined
   - function humanizeAIError: (err) => string
@@ -15,9 +13,20 @@
   - class AIRateLimitError
 - `src/ai/file-scanner.ts` — function scanModifiedFiles: (workingDir, beforeMs) => string[]
 - `src/ai/map-wrapper.ts` — class MAPWrapper
-- `src/ai/ollama-wrapper.ts` — class OllamaWrapper
-- `src/ai/router.ts` — class AIRouter
+- `src/ai/polish.ts` — function polishIssueText: (title, body) => Promise<
 - `src/cli/env.ts` — function loadDotEnv: (envPath) => void
+- `src/cli/hooks/useDeps.ts`
+  - function useDeps: () => TuiDeps
+  - interface TuiDeps
+  - const DepsContext
+- `src/cli/hooks/useVim.ts`
+  - function useVim: () => VimContextValue
+  - interface VimState
+  - interface VimActions
+  - type VimMode
+  - type Pane
+  - type FormField
+  - _...2 more_
 - `src/cli/onboarding.ts` — function runOnboarding: (options) => Promise<number>, interface OnboardingOptions
 - `src/config/config.ts` — function loadConfig: (configPath) => PipelineConfig
 - `src/config/state.ts` — class StateManager
@@ -36,12 +45,11 @@
 - `src/pipeline/pr-review-processor.ts` — class PRReviewProcessor
 - `src/pipeline/prompts.ts`
   - function buildSpecPrompt: (issue) => string
-  - function buildImplementationPrompt: (spec, repoName) => string
   - function buildReviewPrompt: (diff) => string
   - function buildFollowUpPrompt: (comments) => string
   - function buildAutoReviewPrompt: (diff, changedFiles) => string
   - function buildSplitPlanPrompt: (diff, changedFiles) => string
-  - _...1 more_
+  - function buildConflictResolutionPrompt: (conflict) => string
 - `src/pipeline/runner.ts` — class PipelineRunner
 - `src/pipeline/spec-cache.ts` — class SpecCache
 - `src/pipeline/test-runner.ts`

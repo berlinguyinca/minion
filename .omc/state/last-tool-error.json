@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git stash && pnpm build 2>&1; git stash pop\",\"description\":\"Check if build error pre-existed before my changes\"}",
+  "error": "Exit code 1\nSaved working directory and index state WIP on feat/repo-pagination-help: 98dab8a Merge pull request #19 from berlinguyinca/feat/tui-v2-ink\n\n> minion@0.1.0 build /Users/wohlgemuth/IdeaProjects/gh-issue-pipeline\n> tsc -p tsconfig.json\n\nerror: Your local changes to the following files would be overwritten by merge:\n\t.codesight/CODESIGHT.md\n\t.codesight/config.md\n\t.codesight/coverage.md\n\t.codesight/graph.md\n\t.codesight/libs.md\nPlease commit your changes or stash them before you merge.\nAb...",
+  "timestamp": "2026-04-14T17:04:23.140Z",
+  "retry_count": 2
+}

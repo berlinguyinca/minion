@@ -1,0 +1,474 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1776147690409,
+  "projectRoot": "/Users/wohlgemuth/IdeaProjects/gh-issue-pipeline",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "vitest",
+        "version": "2.0.0",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "pnpm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "pnpm build",
+    "testCommand": "pnpm test",
+    "lintCommand": "pnpm lint",
+    "devCommand": "pnpm start",
+    "scripts": {
+      "build": "tsc -p tsconfig.json",
+      "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --no-error-on-unmatched-pattern",
+      "test": "vitest run",
+      "test:unit": "vitest run test/unit",
+      "test:integration": "vitest run test/integration",
+      "test:coverage": "vitest run --coverage",
+      "start": "pnpm build && node dist/index.js"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "scripts",
+      "src",
+      "test"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "coverage": {
+      "path": "coverage",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1776147690273,
+      "keyFiles": [
+        "base.css",
+        "block-navigation.js",
+        "clover.xml",
+        "coverage-final.json",
+        "favicon.png"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 4,
+      "lastAccessed": 1776147690274,
+      "keyFiles": [
+        "index.d.ts",
+        "index.d.ts.map",
+        "index.js",
+        "index.js.map"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1776147690274,
+      "keyFiles": [
+        "install.sh"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 1,
+      "lastAccessed": 1776147690275,
+      "keyFiles": [
+        "index.ts"
+      ]
+    },
+    "test": {
+      "path": "test",
+      "purpose": "Test files",
+      "fileCount": 0,
+      "lastAccessed": 1776147690276,
+      "keyFiles": []
+    },
+    "coverage/config": {
+      "path": "coverage/config",
+      "purpose": "Configuration files",
+      "fileCount": 4,
+      "lastAccessed": 1776147690277,
+      "keyFiles": [
+        "config.ts.html",
+        "index.html",
+        "index.ts.html"
+      ]
+    },
+    "dist/config": {
+      "path": "dist/config",
+      "purpose": "Configuration files",
+      "fileCount": 12,
+      "lastAccessed": 1776147690278,
+      "keyFiles": [
+        "config.d.ts",
+        "config.d.ts.map",
+        "config.js"
+      ]
+    },
+    "src/config": {
+      "path": "src/config",
+      "purpose": "Configuration files",
+      "fileCount": 3,
+      "lastAccessed": 1776147690279,
+      "keyFiles": [
+        "config.ts",
+        "index.ts",
+        "state.ts"
+      ]
+    },
+    "src/types": {
+      "path": "src/types",
+      "purpose": "Type definitions",
+      "fileCount": 1,
+      "lastAccessed": 1776147690280,
+      "keyFiles": [
+        "index.ts"
+      ]
+    },
+    "test/fixtures": {
+      "path": "test/fixtures",
+      "purpose": "Test fixtures",
+      "fileCount": 5,
+      "lastAccessed": 1776147690281,
+      "keyFiles": [
+        "fake-claude.sh",
+        "fake-codex.sh",
+        "fake-ollama.sh"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/index.ts",
+      "accessCount": 44,
+      "lastAccessed": 1776185853298,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/github/client.test.ts",
+      "accessCount": 41,
+      "lastAccessed": 1776186315296,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 36,
+      "lastAccessed": 1776186533250,
+      "type": "directory"
+    },
+    {
+      "path": "src/github/client.ts",
+      "accessCount": 33,
+      "lastAccessed": 1776186292060,
+      "type": "file"
+    },
+    {
+      "path": "src/cli/tui.ts",
+      "accessCount": 31,
+      "lastAccessed": 1776184695086,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 23,
+      "lastAccessed": 1776184824833,
+      "type": "directory"
+    },
+    {
+      "path": "vitest.config.ts",
+      "accessCount": 18,
+      "lastAccessed": 1776185192152,
+      "type": "file"
+    },
+    {
+      "path": "src/cli/onboarding.ts",
+      "accessCount": 17,
+      "lastAccessed": 1776185186226,
+      "type": "file"
+    },
+    {
+      "path": "src/types/index.ts",
+      "accessCount": 17,
+      "lastAccessed": 1776185412282,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/cli/tui.test.ts",
+      "accessCount": 16,
+      "lastAccessed": 1776184709418,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/ai/polish.test.ts",
+      "accessCount": 14,
+      "lastAccessed": 1776177175264,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 13,
+      "lastAccessed": 1776185010671,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.json",
+      "accessCount": 11,
+      "lastAccessed": 1776185192399,
+      "type": "file"
+    },
+    {
+      "path": "src/cli/theme.ts",
+      "accessCount": 10,
+      "lastAccessed": 1776186394964,
+      "type": "file"
+    },
+    {
+      "path": "test",
+      "accessCount": 9,
+      "lastAccessed": 1776185596883,
+      "type": "directory"
+    },
+    {
+      "path": "src/cli/index.ts",
+      "accessCount": 8,
+      "lastAccessed": 1776185186429,
+      "type": "file"
+    },
+    {
+      "path": "src/cli/hooks/useDeps.ts",
+      "accessCount": 8,
+      "lastAccessed": 1776186293210,
+      "type": "file"
+    },
+    {
+      "path": "src/ai/index.ts",
+      "accessCount": 7,
+      "lastAccessed": 1776176644439,
+      "type": "file"
+    },
+    {
+      "path": "src/cli/env.ts",
+      "accessCount": 7,
+      "lastAccessed": 1776184720669,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/config/state.test.ts",
+      "accessCount": 6,
+      "lastAccessed": 1776150923592,
+      "type": "directory"
+    },
+    {
+      "path": "src/ai/map-wrapper.ts",
+      "accessCount": 6,
+      "lastAccessed": 1776176338569,
+      "type": "file"
+    },
+    {
+      "path": "src/cli/hooks/useVim.ts",
+      "accessCount": 6,
+      "lastAccessed": 1776185178705,
+      "type": "file"
+    },
+    {
+      "path": "src/config/config.ts",
+      "accessCount": 5,
+      "lastAccessed": 1776150675245,
+      "type": "file"
+    },
+    {
+      "path": "src/config/state.ts",
+      "accessCount": 5,
+      "lastAccessed": 1776150889454,
+      "type": "file"
+    },
+    {
+      "path": "src/ai/base-wrapper.ts",
+      "accessCount": 5,
+      "lastAccessed": 1776176474599,
+      "type": "file"
+    },
+    {
+      "path": "config.yaml.example",
+      "accessCount": 4,
+      "lastAccessed": 1776150893770,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-04-14-tui-v2-split-pane-design.md",
+      "accessCount": 4,
+      "lastAccessed": 1776181719438,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/pipeline/prompts.test.ts",
+      "accessCount": 4,
+      "lastAccessed": 1776185605637,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/pipeline/runner-perf.test.ts",
+      "accessCount": 4,
+      "lastAccessed": 1776185623325,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/pipeline/runner.test.ts",
+      "accessCount": 4,
+      "lastAccessed": 1776185623942,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/pipeline/issue-processor.test.ts",
+      "accessCount": 4,
+      "lastAccessed": 1776185625328,
+      "type": "file"
+    },
+    {
+      "path": "src/github/index.ts",
+      "accessCount": 3,
+      "lastAccessed": 1776149315719,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/index.test.ts",
+      "accessCount": 3,
+      "lastAccessed": 1776150693721,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/prompts.ts",
+      "accessCount": 3,
+      "lastAccessed": 1776150898040,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/index.ts",
+      "accessCount": 3,
+      "lastAccessed": 1776150899356,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/onboarding.test.ts",
+      "accessCount": 3,
+      "lastAccessed": 1776185007134,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/runner.ts",
+      "accessCount": 2,
+      "lastAccessed": 1776150681356,
+      "type": "file"
+    },
+    {
+      "path": "src/ai/errors.ts",
+      "accessCount": 2,
+      "lastAccessed": 1776176345811,
+      "type": "file"
+    },
+    {
+      "path": "src/ai/polish.ts",
+      "accessCount": 2,
+      "lastAccessed": 1776177014998,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 2,
+      "lastAccessed": 1776180223966,
+      "type": "file"
+    },
+    {
+      "path": "test/unit/cli/theme.test.ts",
+      "accessCount": 2,
+      "lastAccessed": 1776185204226,
+      "type": "file"
+    },
+    {
+      "path": "src/config/index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776147721508,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/issue-processor.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776150680294,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/merge-processor.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776150680413,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/pr-review-processor.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776150680883,
+      "type": "file"
+    },
+    {
+      "path": "src/git/operations.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776150724565,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline",
+      "accessCount": 1,
+      "lastAccessed": 1776150772196,
+      "type": "directory"
+    },
+    {
+      "path": "src/ai/file-scanner.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776176350654,
+      "type": "file"
+    },
+    {
+      "path": "_run.ts",
+      "accessCount": 1,
+      "lastAccessed": 1776176361185,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-04-14-tui-v2-split-pane.md",
+      "accessCount": 1,
+      "lastAccessed": 1776181964292,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

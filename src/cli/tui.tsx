@@ -7,6 +7,7 @@ import { IssueTable } from './components/IssueTable.js'
 import { StatusBar } from './components/StatusBar.js'
 import { MessageToast } from './components/MessageToast.js'
 import { SplitPane } from './components/SplitPane.js'
+import { HelpOverlay } from './components/HelpOverlay.js'
 import { DepsContext, type TuiDeps } from './hooks/useDeps.js'
 import { messages } from './theme.js'
 import type { Pane, FormField } from './hooks/useVim.js'
@@ -25,6 +26,7 @@ interface RecentIssue {
 interface RepoChoice {
   owner: string
   name: string
+  pushedAt?: string | undefined
 }
 
 function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
@@ -51,6 +53,7 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
 
   // UI state
   const [pane, setPane] = useState<Pane>('form')
+  const [showHelp, setShowHelp] = useState(false)
   const [statusMessage, setStatusMessage] = useState('')
   const [messageVariant, setMessageVariant] = useState<'success' | 'error' | undefined>(undefined)
 
@@ -348,6 +351,8 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
       const field = formFieldRef.current
       if (field === 'title') setTitle('')
       else if (field === 'body') setBody('')
+    } else if (action === 'help') {
+      setShowHelp((h) => !h)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deps, clearForm, showMessage])
@@ -368,29 +373,33 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
     <DepsContext.Provider value={deps}>
       <VimProvider onCommand={handleCommand} onAction={handleAction}>
         <Box flexDirection="column">
-          <SplitPane
-            left={
-              <IssueForm
-                title={title}
-                body={body}
-                labels={selectedLabels}
-                onTitleChange={setTitle}
-                onBodyChange={setBody}
-                active={pane === 'form'}
-                editingIssue={editingIssue}
-                formField={formField}
-              />
-            }
-            right={
-              <IssueTable
-                openIssues={openIssues}
-                recentIssues={recentIssues}
-                active={pane === 'table'}
-                cursor={tableCursor}
-                tab={tableTab}
-              />
-            }
-          />
+          {showHelp ? (
+            <HelpOverlay />
+          ) : (
+            <SplitPane
+              left={
+                <IssueForm
+                  title={title}
+                  body={body}
+                  labels={selectedLabels}
+                  onTitleChange={setTitle}
+                  onBodyChange={setBody}
+                  active={pane === 'form'}
+                  editingIssue={editingIssue}
+                  formField={formField}
+                />
+              }
+              right={
+                <IssueTable
+                  openIssues={openIssues}
+                  recentIssues={recentIssues}
+                  active={pane === 'table'}
+                  cursor={tableCursor}
+                  tab={tableTab}
+                />
+              }
+            />
+          )}
           <StatusBar repo={repoLabel} message={statusMessage} />
           <MessageToast message={statusMessage} variant={messageVariant} />
         </Box>
