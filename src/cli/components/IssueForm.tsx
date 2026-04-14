@@ -66,9 +66,11 @@ export function IssueForm({
           <Text color={colors.dim}>{'── Comments (' + comments.length + ') ──'}</Text>
           {comments.map((c, i) => (
             <Box key={i}>
-              <Text color={colors.goggle}>@{c.author}</Text>
-              <Text color={colors.dim}>{': '}</Text>
-              <Text>{c.body}</Text>
+              <Text wrap="truncate-end">
+                <Text color={colors.goggle}>@{c.author}</Text>
+                <Text color={colors.dim}>{': '}</Text>
+                <Text>{c.body.split('\n')[0] ?? ''}</Text>
+              </Text>
             </Box>
           ))}
           <Box marginTop={1}>

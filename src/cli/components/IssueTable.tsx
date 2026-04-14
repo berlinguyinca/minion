@@ -10,12 +10,6 @@ interface IssueTableProps {
   tab: 'open' | 'recent'
 }
 
-const TITLE_MAX = 25
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s
-}
-
 export function IssueTable({ openIssues, recentIssues, active, cursor, tab }: IssueTableProps): React.JSX.Element {
   const borderColor = active ? colors.overalls : colors.dim
 
@@ -24,18 +18,20 @@ export function IssueTable({ openIssues, recentIssues, active, cursor, tab }: Is
         const isCursor = active && i === cursor
         return (
           <Box key={issue.number}>
-            <Box width={2}>
+            <Box width={2} flexShrink={0}>
               {isCursor ? <Text color={colors.overalls}>{'▶'}</Text> : <Text>{' '}</Text>}
             </Box>
-            <Box width={5}>
+            <Box width={5} flexShrink={0}>
               <Text color={colors.dim}>#{issue.number}</Text>
             </Box>
-            <Box width={27}>
-              <Text>{truncate(issue.title, TITLE_MAX)}</Text>
+            <Box flexGrow={1} flexShrink={1}>
+              <Text wrap="truncate-end">{issue.title}</Text>
             </Box>
-            <Box>
-              <Text color={colors.banana}>{issue.labels.join(', ')}</Text>
-            </Box>
+            {issue.labels.length > 0 && (
+              <Box flexShrink={0} marginLeft={1}>
+                <Text color={colors.banana} wrap="truncate-end">{issue.labels.join(', ')}</Text>
+              </Box>
+            )}
           </Box>
         )
       })
@@ -43,16 +39,16 @@ export function IssueTable({ openIssues, recentIssues, active, cursor, tab }: Is
         const isCursor = active && i === cursor
         return (
           <Box key={`${issue.repo}-${issue.number}`}>
-            <Box width={2}>
+            <Box width={2} flexShrink={0}>
               {isCursor ? <Text color={colors.overalls}>{'▶'}</Text> : <Text>{' '}</Text>}
             </Box>
-            <Box width={5}>
+            <Box width={5} flexShrink={0}>
               <Text color={colors.dim}>#{issue.number}</Text>
             </Box>
-            <Box width={27}>
-              <Text>{truncate(issue.title, TITLE_MAX)}</Text>
+            <Box flexGrow={1} flexShrink={1}>
+              <Text wrap="truncate-end">{issue.title}</Text>
             </Box>
-            <Box>
+            <Box flexShrink={0} marginLeft={1}>
               <Text color={colors.goggle}>{issue.repo}</Text>
             </Box>
           </Box>

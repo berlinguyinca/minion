@@ -74,13 +74,13 @@ describe('IssueTable', () => {
     expect(inactive.lastFrame()).toBeDefined()
   })
 
-  it('truncates long titles', () => {
+  it('renders long titles with truncate-end wrap', () => {
     const longIssues = [{ number: 1, title: 'A'.repeat(50), labels: [] }]
     const { lastFrame } = render(
       <IssueTable openIssues={longIssues} recentIssues={[]}
         active={true} cursor={0} tab="open" />
     )
-    // Title should be truncated, not showing all 50 chars
-    expect(lastFrame()).not.toContain('A'.repeat(50))
+    // Title renders — truncation happens at terminal width via Ink's wrap="truncate-end"
+    expect(lastFrame()).toContain('AAAA')
   })
 })
