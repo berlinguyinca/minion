@@ -1,4 +1,5 @@
 export { IssueProcessor } from './issue-processor.js'
+export { ExplicitIssueRunner } from './explicit-runner.js'
 export { MergeProcessor } from './merge-processor.js'
 export { PRReviewProcessor } from './pr-review-processor.js'
 export { PipelineRunner } from './runner.js'

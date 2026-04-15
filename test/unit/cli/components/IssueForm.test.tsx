@@ -125,6 +125,18 @@ describe('IssueForm', () => {
       expect(lastFrame()).toContain('@bob')
     })
 
+    it('shows relative timestamps for comments', () => {
+      const { lastFrame } = render(wrap(
+        <IssueForm title="Bug" body="Details" labels={[]}
+          onTitleChange={() => {}} onBodyChange={() => {}}
+          active={true} editingIssue={42} formField="title"
+          comments={sampleComments} commentText="" onCommentChange={() => {}}
+          now={new Date('2026-04-14T12:00:00Z')} />
+      ))
+      expect(lastFrame()).toContain('@alice (2h ago)')
+      expect(lastFrame()).toContain('@bob (1h ago)')
+    })
+
     it('hides comments section when creating new issue', () => {
       const { lastFrame } = render(wrap(
         <IssueForm title="" body="" labels={[]}

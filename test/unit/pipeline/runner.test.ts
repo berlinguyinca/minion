@@ -578,6 +578,35 @@ describe('PipelineRunner', () => {
     )
   })
 
+  it('auto-review phase: completes progress item when review throws', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    reviewProcessorMock.reviewPR.mockRejectedValue(new Error('AI crash'))
+    const progress = {
+      beginPhase: vi.fn(),
+      beginRepo: vi.fn(),
+      beginItem: vi.fn(),
+      update: vi.fn(),
+      complete: vi.fn(),
+    }
+    const progressRunner = new PipelineRunner(
+      baseConfig,
+      githubMock as unknown as GitHubClient,
+      aiMock as unknown as AIProvider,
+      stateMock as unknown as StateManager,
+      progress,
+    )
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await progressRunner.run()
+    errorSpy.mockRestore()
+    logSpy.mockRestore()
+
+    expect(progress.complete).toHaveBeenCalledWith('failed')
+  })
+
   it('auto-review phase: marks failed outcome when review returns error', async () => {
     const pr = makePR(10)
     githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
@@ -613,7 +642,7 @@ describe('PipelineRunner', () => {
       verdict: 'merge',
       merged: false,
       splitInto: [],
-      error: 'AI invocation failed (model: map, exit: 1): {"version":1,"success":false,"spec":"# Specification: Granular AI Provider Configuration"}',
+      error: 'AI invocation failed (model: map, exit: 1): {"version":1,"success":false,"error":"Execution fix completed with failing tests","testsTotal":6,"testsPassing":5,"testsFailing":1,"outputDir":"/tmp/out"}',
       retryable: true,
     })
 
@@ -625,8 +654,10 @@ describe('PipelineRunner', () => {
     const warnMessages = warnSpy.mock.calls.map((call) => call.map((part) => String(part)).join(' '))
     warnSpy.mockRestore()
 
-    expect(warnMessages.some((msg) => msg.includes('[review] Failed to process PR #10:'))).toBe(true)
-    expect(warnMessages.some((msg) => msg.includes('"spec"'))).toBe(false)
+    expect(warnMessages).toContain('[review] Failed to process PR #10')
+    expect(warnMessages.some((msg) => msg.includes('Execution fix completed with failing tests'))).toBe(true)
+    expect(warnMessages.some((msg) => msg.includes('tests 5/6 passing, 1 failing'))).toBe(true)
+    expect(warnMessages.some((msg) => msg.includes('artifacts: /tmp/out'))).toBe(true)
   })
 
   it('merge phase: skips PRs where shouldReviewPR returns false', async () => {
@@ -698,7 +729,7 @@ describe('PipelineRunner', () => {
       repoFullName: 'acme/api',
       merged: false,
       conflictsResolved: 0,
-      error: 'AI invocation failed (model: map, exit: 1): {"version":1,"success":false,"spec":"# Specification: Granular AI Provider Configuration"}',
+      error: 'AI invocation failed (model: map, exit: 1): {"version":1,"success":false,"error":"Execution fix completed with failing tests","testsTotal":6,"testsPassing":5,"testsFailing":1,"outputDir":"/tmp/out","steps":[{"id":"tests","task":"Run unit tests","status":"failed"},{"id":"fix","task":"Apply fix","status":"done"}]}',
       retryable: true,
     })
 
@@ -706,6 +737,7 @@ describe('PipelineRunner', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     await runner.run()
     logSpy.mockRestore()
+    const warnLines = warnSpy.mock.calls.map((call) => call.map((part) => String(part)).join(' '))
     warnSpy.mockRestore()
 
     expect(stateMock.markPROutcome).toHaveBeenCalledWith(
@@ -716,6 +748,12 @@ describe('PipelineRunner', () => {
         retryable: true,
       }),
     )
+    expect(warnLines).toContain('[merge] Failed to merge PR #10')
+    expect(warnLines.some((line) => line.includes('Execution fix completed with failing tests'))).toBe(true)
+    expect(warnLines.some((line) => line.includes('tests 5/6 passing, 1 failing'))).toBe(true)
+    expect(warnLines.some((line) => line.includes('artifacts: /tmp/out'))).toBe(true)
+    expect(warnLines.some((line) => line.includes('failing step: Run unit tests'))).toBe(true)
+    expect(warnLines.some((line) => line.includes('next:'))).toBe(true)
   })
 
   it('merge phase: marks failed outcome when processMergeRequest throws', async () => {
@@ -736,5 +774,36 @@ describe('PipelineRunner', () => {
       'acme/api', 10,
       expect.objectContaining({ status: 'failed', error: 'merge crash' }),
     )
+  })
+
+  it('merge phase: completes progress item when merge throws', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([
+      { id: 1, body: '/merge', user: 'dev', createdAt: '2024-01-01T00:00:00Z' },
+    ])
+    mergeProcessorMock.processMergeRequest.mockRejectedValue(new Error('merge crash'))
+    const progress = {
+      beginPhase: vi.fn(),
+      beginRepo: vi.fn(),
+      beginItem: vi.fn(),
+      update: vi.fn(),
+      complete: vi.fn(),
+    }
+    const progressRunner = new PipelineRunner(
+      baseConfig,
+      githubMock as unknown as GitHubClient,
+      aiMock as unknown as AIProvider,
+      stateMock as unknown as StateManager,
+      progress,
+    )
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await progressRunner.run()
+    errorSpy.mockRestore()
+    logSpy.mockRestore()
+
+    expect(progress.complete).toHaveBeenCalledWith('failed')
   })
 })

@@ -354,6 +354,24 @@ describe('MAPWrapper', () => {
       expect(parsed.steps).toHaveLength(2)
       expect(parsed.dag).toBeDefined()
     })
+
+    it('parses pretty-printed MAP headless JSON from stdout', async () => {
+      const prettyFixture = JSON.stringify({
+        version: 2,
+        success: true,
+        steps: [
+          { id: 's1', agent: 'claude', task: 'spec', status: 'done', outputType: 'answer', output: 'Answer text' },
+        ],
+        dag: { nodes: [], edges: [] },
+      }, null, 2)
+      spawnMock.mockReturnValue(makeFakeProcess({ stdout: `progress line\n${prettyFixture}\n` }))
+
+      const result = await map.invokeAgent('prompt', '/tmp/workdir')
+
+      const parsed = JSON.parse(result.stdout) as { version: number; steps: unknown[] }
+      expect(parsed.version).toBe(2)
+      expect(parsed.steps).toHaveLength(1)
+    })
   })
 
   describe('detect', () => {

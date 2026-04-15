@@ -10,7 +10,7 @@ import { SplitPane } from './components/SplitPane.js'
 import { HelpOverlay } from './components/HelpOverlay.js'
 import { DepsContext, type TuiDeps } from './hooks/useDeps.js'
 import { messages } from './theme.js'
-import type { Pane, FormField } from './hooks/useVim.js'
+import type { Pane, FormField, VimMode } from './hooks/useVim.js'
 
 export type { TuiDeps } from './hooks/useDeps.js'
 
@@ -196,7 +196,7 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
   }, [])
 
   // Handle vim : commands
-  const handleCommand = useCallback((cmd: string): void => {
+  const handleCommand = useCallback((cmd: string): VimMode | void => {
     const repo = selectedRepoRef.current
     if (!repo) return
 
@@ -318,12 +318,13 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
       }
       setFormField('comment')
       setPane('form')
+      return 'insert'
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deps, app, clearForm, showMessage])
 
   // Handle vim normal mode actions
-  const handleAction = useCallback((action: string): void => {
+  const handleAction = useCallback((action: string): VimMode | void => {
     const currentPane = paneRef.current
     const currentTab = tableTabRef.current
 
@@ -472,6 +473,7 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
       }
       setFormField('comment')
       setPane('form')
+      return 'insert'
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deps, clearForm, showMessage])
@@ -495,6 +497,7 @@ function App({ deps }: { deps: TuiDeps }): React.JSX.Element {
         onAction={handleAction}
         pane={pane}
         formField={formField}
+        commentFieldEnabled={editingIssue !== undefined}
         onPaneChange={setPane}
         onFormFieldChange={setFormField}
       >

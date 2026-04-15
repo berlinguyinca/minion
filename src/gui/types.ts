@@ -1,0 +1,29 @@
+import type { IssueComment, ProcessingResult, RepoConfig } from '../types/index.js'
+
+export interface GuiIssueSummary {
+  number: number
+  title: string
+  labels: string[]
+}
+
+export interface GuiIssueDetail {
+  number: number
+  title: string
+  body: string
+  url: string
+  labels: string[]
+}
+
+export interface GuiWorkspaceApi {
+  listRepos(): Promise<RepoConfig[]>
+  listLabels(owner: string, name: string): Promise<string[]>
+  listOpenIssues(owner: string, name: string): Promise<GuiIssueSummary[]>
+  getIssue(owner: string, name: string, number: number): Promise<GuiIssueDetail>
+  listComments(owner: string, name: string, number: number): Promise<IssueComment[]>
+  createIssue(owner: string, name: string, title: string, body: string, labels: string[]): Promise<{ number: number; url: string }>
+  updateIssue(owner: string, name: string, number: number, title: string, body: string): Promise<void>
+  closeIssue(owner: string, name: string, number: number): Promise<void>
+  postComment(owner: string, name: string, number: number, body: string): Promise<void>
+  polish(title: string, body: string): Promise<{ title: string; body: string } | undefined>
+  runIssue(repo: RepoConfig, number: number): Promise<ProcessingResult>
+}
