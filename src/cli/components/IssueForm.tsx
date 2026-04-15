@@ -46,11 +46,29 @@ interface IssueFormProps {
   commentText: string
   onCommentChange: (v: string) => void
   commentsExpanded?: boolean
+  now?: Date
+}
+
+export function formatRelativeTime(isoTime: string, now = new Date()): string {
+  const thenMs = new Date(isoTime).getTime()
+  if (!Number.isFinite(thenMs)) return ''
+  const elapsedSeconds = Math.max(0, Math.round((now.getTime() - thenMs) / 1000))
+  if (elapsedSeconds < 60) return 'just now'
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60)
+  if (elapsedMinutes < 60) return `${elapsedMinutes}m ago`
+  const elapsedHours = Math.floor(elapsedMinutes / 60)
+  if (elapsedHours < 24) return `${elapsedHours}h ago`
+  const elapsedDays = Math.floor(elapsedHours / 24)
+  if (elapsedDays < 30) return `${elapsedDays}d ago`
+  const elapsedMonths = Math.floor(elapsedDays / 30)
+  if (elapsedMonths < 12) return `${elapsedMonths}mo ago`
+  const elapsedYears = Math.floor(elapsedDays / 365)
+  return `${elapsedYears}y ago`
 }
 
 export function IssueForm({
   title, body, labels, onTitleChange, onBodyChange, active, editingIssue, formField,
-  comments, commentText, onCommentChange, commentsExpanded,
+  comments, commentText, onCommentChange, commentsExpanded, now,
 }: IssueFormProps): React.JSX.Element {
   const { stdout } = useStdout()
   const cols = stdout?.columns ?? 120
@@ -101,7 +119,7 @@ export function IssueForm({
             <Box key={i} flexDirection="column">
               {commentsExpanded ? (
                 <>
-                  <Text color={colors.goggle} bold>@{c.author}</Text>
+                  <Text color={colors.goggle} bold>@{c.author} <Text color={colors.dim}>({formatRelativeTime(c.createdAt, now)})</Text></Text>
                   <Box flexDirection="column" marginLeft={2}>
                     {c.body.split('\n').map((line, j) => (
                       <Text key={j}>{truncate(line, commentMaxWidth)}</Text>
@@ -112,6 +130,7 @@ export function IssueForm({
               ) : (
                 <Text>
                   <Text color={colors.goggle}>@{c.author}</Text>
+                  <Text color={colors.dim}> ({formatRelativeTime(c.createdAt, now)})</Text>
                   <Text color={colors.dim}>{': '}</Text>
                   <Text>{truncate(c.body.split('\n')[0] ?? '', commentMaxWidth)}</Text>
                 </Text>

@@ -4,6 +4,7 @@ import type { GitOperations } from '../git/operations.js'
 import { createTempDir, cleanupTempDir } from '../git/index.js'
 import { buildConflictResolutionPrompt } from './prompts.js'
 import { classifyAIError } from '../ai/errors.js'
+import { NoopProgressReporter, type ProgressReporter } from './progress.js'
 
 const MAX_REBASE_ROUNDS = 10
 
@@ -13,6 +14,7 @@ export class MergeProcessor {
     private readonly ai: AIProvider,
     private readonly git: GitOperations,
     private readonly config: PipelineConfig,
+    private readonly progress: ProgressReporter = new NoopProgressReporter(),
   ) {}
 
   async processMergeRequest(
@@ -26,22 +28,27 @@ export class MergeProcessor {
     try {
       // 1. Full clone (needed for rebase history)
       const repoUrl = repo.cloneUrl ?? `https://github.com/${repo.owner}/${repo.name}.git`
+      this.progress.update('cloning repo')
       await this.git.cloneFull(repoUrl, tempDir, pr.base)
 
       // 2. Fetch and checkout PR branch
+      this.progress.update('fetching PR branch')
       await this.git.fetch(tempDir, 'origin', pr.head)
       await this.git.checkout(tempDir, pr.head)
 
       // 3. Fetch latest base
+      this.progress.update(`fetching latest ${pr.base}`)
       await this.git.fetch(tempDir, 'origin', pr.base)
 
       // 4. Attempt rebase
+      this.progress.update(`rebasing onto ${pr.base}`)
       let rebaseResult = await this.git.rebase(tempDir, `origin/${pr.base}`)
 
       // 5/6. Handle rebase result — resolve conflicts if any
       let round = 0
       while (!rebaseResult.success && round < MAX_REBASE_ROUNDS) {
         round++
+        this.progress.update(`resolving ${rebaseResult.conflicts.length} conflict(s), round ${round}`)
 
         for (const conflict of rebaseResult.conflicts) {
           const resolveResult = await this.ai.invokeAgent(buildConflictResolutionPrompt(conflict), tempDir)
@@ -79,10 +86,12 @@ export class MergeProcessor {
       }
 
       // 7. Force-push rebased branch
+      this.progress.update('pushing rebased branch')
       await this.git.forcePush(tempDir, pr.head)
 
       // 8. Merge via API
       const mergeMethod = this.config.mergeMethod ?? 'merge'
+      this.progress.update('merging via GitHub API')
       await this.github.mergePullRequest(repo.owner, repo.name, pr.number, mergeMethod)
 
       // 9. Post success comment
@@ -96,6 +105,7 @@ export class MergeProcessor {
       const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
       return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: failure.message, retryable: failure.retryable }
     } /* v8 ignore next */ finally {
+      this.progress.update('cleanup complete')
       cleanupTempDir(tempDir)
     }
   }

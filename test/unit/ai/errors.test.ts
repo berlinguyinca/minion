@@ -188,6 +188,9 @@ describe('humanizeAIError', () => {
         success: false,
         spec: '# Specification: Granular AI Provider Configuration',
         outputDir: '/tmp/out',
+        testsTotal: 6,
+        testsPassing: 5,
+        testsFailing: 1,
       }),
     )
 
@@ -196,6 +199,33 @@ describe('humanizeAIError', () => {
     expect(result).toContain('AI failed (model: map, exit: 1)')
     expect(result).not.toContain('"spec"')
     expect(result).not.toContain('"success":false')
+  })
+
+  it('extracts structured failure details and next action hints', () => {
+    const err = new AIInvocationError(
+      'map',
+      1,
+      JSON.stringify({
+        version: 1,
+        success: false,
+        error: 'Execution fix completed with failing tests',
+        testsTotal: 6,
+        testsPassing: 5,
+        testsFailing: 1,
+        failingTests: ['test/unit/foo.test.ts::fails on login'],
+        steps: [
+          { id: 's1', task: 'Run unit tests', status: 'failed' },
+        ],
+        outputDir: '/tmp/out',
+      }),
+    )
+
+    const result = classifyAIError(err)
+
+    expect(result.details).toContain('tests 5/6 passing, 1 failing')
+    expect(result.details).toContain('failing tests: test/unit/foo.test.ts::fails on login')
+    expect(result.details).toContain('failing step: Run unit tests')
+    expect(result.nextActionHint).toBe('Inspect Run unit tests and rerun the failing tests')
   })
 
   it('classifies AIInvocationError as retryable but not binary-not-found errors', () => {

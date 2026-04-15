@@ -4,11 +4,12 @@ import { VimContext, type VimMode, type Pane, type FormField, type InputMode } f
 
 export interface VimProviderProps {
   children: ReactNode
-  onAction?: (action: string) => void
-  onCommand?: (command: string) => void
+  onAction?: (action: string) => VimMode | void
+  onCommand?: (command: string) => VimMode | void
   initialInputMode?: InputMode
   pane?: Pane
   formField?: FormField
+  commentFieldEnabled?: boolean
   onPaneChange?: (pane: Pane) => void
   onFormFieldChange?: (field: FormField) => void
 }
@@ -44,6 +45,7 @@ export function VimProvider({
   initialInputMode,
   pane: controlledPane,
   formField: controlledFormField,
+  commentFieldEnabled = true,
   onPaneChange,
   onFormFieldChange,
 }: VimProviderProps): React.JSX.Element {
@@ -65,6 +67,7 @@ export function VimProvider({
   const formFieldRef = useRef<FormField>(formField)
   const commandBufferRef = useRef('')
   const inputModeRef = useRef<InputMode>(initialInputMode ?? 'basic')
+  const commentFieldEnabledRef = useRef(commentFieldEnabled)
 
   useLayoutEffect(() => {
     paneRef.current = pane
@@ -73,6 +76,10 @@ export function VimProvider({
   useLayoutEffect(() => {
     formFieldRef.current = formField
   }, [formField])
+
+  useLayoutEffect(() => {
+    commentFieldEnabledRef.current = commentFieldEnabled
+  }, [commentFieldEnabled])
 
   const setPaneSync = useCallback((next: Pane): void => {
     paneRef.current = next
@@ -90,6 +97,24 @@ export function VimProvider({
     }
     onFormFieldChange?.(resolved)
   }, [controlledFormField, onFormFieldChange])
+
+  const nextFormField = useCallback((field: FormField): FormField => {
+    if (commentFieldEnabledRef.current) {
+      if (field === 'title') return 'body'
+      if (field === 'body') return 'comment'
+      return 'title'
+    }
+    return field === 'title' ? 'body' : 'title'
+  }, [])
+
+  const previousFormField = useCallback((field: FormField): FormField => {
+    if (commentFieldEnabledRef.current) {
+      if (field === 'title') return 'comment'
+      if (field === 'body') return 'title'
+      return 'body'
+    }
+    return field === 'title' ? 'body' : 'title'
+  }, [])
 
   const togglePane = useCallback((): void => {
     setPaneSync(paneRef.current === 'form' ? 'table' : 'form')
@@ -145,17 +170,9 @@ export function VimProvider({
         if (escape) {
           setModeSync('normal')
         } else if (shiftTab) {
-          setFormFieldSync((f) => {
-            if (f === 'title') return 'comment'
-            if (f === 'body') return 'title'
-            return 'body'
-          })
+          setFormFieldSync(previousFormField)
         } else if (tab) {
-          setFormFieldSync((f) => {
-            if (f === 'title') return 'body'
-            if (f === 'body') return 'comment'
-            return 'title'
-          })
+          setFormFieldSync(nextFormField)
         }
         // All other keys pass through to text fields
         return
@@ -166,9 +183,9 @@ export function VimProvider({
           setModeSync('normal')
           setCommandBufferSync('')
         } else if (enter) {
-          onCommandRef.current?.(commandBufferRef.current)
+          const nextMode = onCommandRef.current?.(commandBufferRef.current)
           setCommandBufferSync('')
-          setModeSync('normal')
+          setModeSync(nextMode ?? 'normal')
         } else if (backspace) {
           setCommandBufferSync((buf) => buf.slice(0, -1))
         } else if (input.length > 0) {
@@ -227,8 +244,8 @@ export function VimProvider({
           return
         }
         if (input === 'c') {
-          onActionRef.current?.('focus-comment')
-          setModeSync('insert')
+          const nextMode = onActionRef.current?.('focus-comment')
+          if (nextMode !== undefined) setModeSync(nextMode)
           return
         }
         if (input === 'e' || input === 'E') {
@@ -309,8 +326,8 @@ export function VimProvider({
       }
 
       if (input === 'c') {
-        onActionRef.current?.('focus-comment')
-        setModeSync('insert')
+        const nextMode = onActionRef.current?.('focus-comment')
+        if (nextMode !== undefined) setModeSync(nextMode)
         return
       }
 
@@ -406,6 +423,8 @@ export function VimProvider({
     setInputModeSync,
     setPaneSync,
     setFormFieldSync,
+    nextFormField,
+    previousFormField,
     togglePane,
   ])
 

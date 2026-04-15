@@ -45,6 +45,7 @@ import { GitOperations } from '../../../src/git/operations.js'
 import { StateManager } from '../../../src/config/state.js'
 import { cleanupTempDir } from '../../../src/git/index.js'
 import { runTests } from '../../../src/pipeline/test-runner.js'
+import { AIInvocationError } from '../../../src/ai/errors.js'
 import type { AIProvider } from '../../../src/types/index.js'
 
 // ---------------------------------------------------------------------------
@@ -165,6 +166,29 @@ describe('IssueProcessor', () => {
 
     expect(result.success).toBe(true)
     expect(git.clone).not.toHaveBeenCalled()
+  })
+
+  it('bypasses only issue eligibility when explicitly requested', async () => {
+    state.shouldProcessIssue.mockReturnValue(false)
+
+    const result = await processor.processIssue(repo, issue, { bypassEligibility: true })
+
+    expect(state.shouldProcessIssue).not.toHaveBeenCalled()
+    expect(github.branchExists).toHaveBeenCalledWith('acme', 'api', 'ai/42-add-rate-limiting')
+    expect(git.clone).toHaveBeenCalled()
+    expect(result.success).toBe(true)
+  })
+
+  it('preserves open PR safety when explicit processing bypasses eligibility', async () => {
+    state.shouldProcessIssue.mockReturnValue(false)
+    github.branchExists.mockResolvedValue(true)
+    github.fetchOpenPRForBranch.mockResolvedValue({ number: 99, url: 'https://github.com/acme/api/pull/99', isDraft: false })
+
+    const result = await processor.processIssue(repo, issue, { bypassEligibility: true })
+
+    expect(github.fetchOpenPRForBranch).toHaveBeenCalledWith('acme', 'api', 'ai/42-add-rate-limiting')
+    expect(git.clone).not.toHaveBeenCalled()
+    expect(result.prUrl).toBe('https://github.com/acme/api/pull/99')
   })
 
   it('creates draft PR when tests fail, result has isDraft: true and testsPassed: false', async () => {
@@ -318,6 +342,28 @@ describe('IssueProcessor', () => {
     warnSpy.mockRestore()
   })
 
+  it('humanizes review AI invocation errors without logging raw JSON payloads', async () => {
+    ai.invokeAgent
+      .mockResolvedValueOnce({ success: true, filesWritten: ['src/index.ts'], stdout: '', stderr: '' })
+      .mockRejectedValueOnce(new AIInvocationError(
+        'map',
+        1,
+        '{"version":1,"success":false,"error":"Execution fix completed with failing tests","testsTotal":6,"testsPassing":5,"testsFailing":1}',
+      ))
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await processor.processIssue(repo, issue)
+
+    const warnText = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(warnText).toContain('AI failed (model: map, exit: 1)')
+    expect(warnText).toContain('Execution fix completed with failing tests')
+    expect(warnText).not.toContain('"success":false')
+    expect(warnText).not.toContain('"version":1')
+
+    warnSpy.mockRestore()
+  })
+
   it('warns and continues when follow-up invokeAgent throws after review comments', async () => {
     // First call: spec+impl success
     // Second call: review returns structured comments
@@ -341,6 +387,34 @@ describe('IssueProcessor', () => {
       expect.any(String),
     )
     expect(result.success).toBe(true)
+
+    warnSpy.mockRestore()
+  })
+
+  it('humanizes follow-up AI invocation errors without logging raw JSON payloads', async () => {
+    ai.invokeAgent
+      .mockResolvedValueOnce({ success: true, filesWritten: ['src/index.ts'], stdout: '', stderr: '' })
+      .mockResolvedValueOnce({
+        success: true,
+        filesWritten: [],
+        stdout: JSON.stringify({ comments: [{ path: 'b.ts', line: 5, body: 'needs work' }] }),
+        stderr: '',
+      })
+      .mockRejectedValueOnce(new AIInvocationError(
+        'map',
+        1,
+        '{"version":1,"success":false,"error":"Follow-up failed with unsupported capability"}',
+      ))
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await processor.processIssue(repo, issue)
+
+    const warnText = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(warnText).toContain('AI failed (model: map, exit: 1)')
+    expect(warnText).toContain('Follow-up failed with unsupported capability')
+    expect(warnText).not.toContain('"success":false')
+    expect(warnText).not.toContain('"version":1')
 
     warnSpy.mockRestore()
   })

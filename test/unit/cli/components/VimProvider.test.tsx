@@ -295,6 +295,42 @@ describe('VimProvider', () => {
       stdin.write('\x1B[Z')
       expect(onFormFieldChange).toHaveBeenCalledWith('comment')
     })
+
+    it('insert mode Tab in create mode cycles body back to title instead of hidden comment', () => {
+      const onFormFieldChange = vi.fn()
+      const { stdin } = render(
+        <VimProvider
+          initialInputMode="vim"
+          formField="body"
+          commentFieldEnabled={false}
+          onFormFieldChange={onFormFieldChange}
+        >
+          <FormFieldDisplay />
+        </VimProvider>
+      )
+      stdin.write('i')
+      stdin.write('\t')
+      expect(onFormFieldChange).toHaveBeenCalledWith('title')
+      expect(onFormFieldChange).not.toHaveBeenCalledWith('comment')
+    })
+
+    it('insert mode Shift+Tab in create mode cycles title back to body instead of hidden comment', () => {
+      const onFormFieldChange = vi.fn()
+      const { stdin } = render(
+        <VimProvider
+          initialInputMode="vim"
+          formField="title"
+          commentFieldEnabled={false}
+          onFormFieldChange={onFormFieldChange}
+        >
+          <FormFieldDisplay />
+        </VimProvider>
+      )
+      stdin.write('i')
+      stdin.write('\x1B[Z')
+      expect(onFormFieldChange).toHaveBeenCalledWith('body')
+      expect(onFormFieldChange).not.toHaveBeenCalledWith('comment')
+    })
   })
 
   describe('issue management keybindings', () => {
@@ -307,14 +343,24 @@ describe('VimProvider', () => {
       expect(onAction).toHaveBeenCalledWith('close-issue')
     })
 
-    it('vim mode: c fires focus-comment and enters insert mode', () => {
-      const onAction = vi.fn()
+    it('vim mode: c enters insert mode when focus-comment action accepts it', () => {
+      const onAction = vi.fn().mockReturnValue('insert')
       const { lastFrame, stdin } = render(
         <VimProvider onAction={onAction} initialInputMode="vim"><ModeDisplay /></VimProvider>
       )
       stdin.write('c')
       expect(onAction).toHaveBeenCalledWith('focus-comment')
       expect(lastFrame()).toBe('insert')
+    })
+
+    it('vim mode: c stays normal when focus-comment action is rejected', () => {
+      const onAction = vi.fn()
+      const { lastFrame, stdin } = render(
+        <VimProvider onAction={onAction} initialInputMode="vim"><ModeDisplay /></VimProvider>
+      )
+      stdin.write('c')
+      expect(onAction).toHaveBeenCalledWith('focus-comment')
+      expect(lastFrame()).toBe('normal')
     })
 
     it('basic mode: x fires close-issue action', () => {
@@ -326,13 +372,25 @@ describe('VimProvider', () => {
       expect(onAction).toHaveBeenCalledWith('close-issue')
     })
 
-    it('basic mode: c fires focus-comment and enters insert mode', () => {
-      const onAction = vi.fn()
+    it('basic mode: c enters insert mode when focus-comment action accepts it', () => {
+      const onAction = vi.fn().mockReturnValue('insert')
       const { lastFrame, stdin } = render(
         <VimProvider onAction={onAction}><ModeDisplay /></VimProvider>
       )
       stdin.write('c')
       expect(onAction).toHaveBeenCalledWith('focus-comment')
+      expect(lastFrame()).toBe('insert')
+    })
+
+    it('command mode: returned insert mode from :comment is honored', () => {
+      const onCommand = vi.fn().mockReturnValue('insert')
+      const { lastFrame, stdin } = render(
+        <VimProvider onCommand={onCommand}><ModeDisplay /></VimProvider>
+      )
+      stdin.write(':')
+      stdin.write('comment')
+      stdin.write('\r')
+      expect(onCommand).toHaveBeenCalledWith('comment')
       expect(lastFrame()).toBe('insert')
     })
   })

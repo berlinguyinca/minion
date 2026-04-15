@@ -5,6 +5,7 @@ import { createTempDir, cleanupTempDir } from '../git/index.js'
 import { buildAutoReviewPrompt, buildSplitPlanPrompt } from './prompts.js'
 import { detectTestCommand, runTests } from './test-runner.js'
 import { classifyAIError } from '../ai/errors.js'
+import { NoopProgressReporter, type ProgressReporter } from './progress.js'
 
 /** Minimum thresholds below which a PR is too small to split. */
 const MIN_FILES_TO_SPLIT = 5
@@ -23,6 +24,7 @@ export class PRReviewProcessor {
     private readonly ai: AIProvider,
     private readonly git: GitOperations,
     private readonly config: PipelineConfig,
+    private readonly progress: ProgressReporter = new NoopProgressReporter(),
   ) {}
 
   async reviewPR(repo: RepoConfig, pr: PRInfo): Promise<PRReviewResult> {
@@ -30,10 +32,12 @@ export class PRReviewProcessor {
 
     try {
       // 1. Get the diff
+      this.progress.update('fetching diff')
       const diff = await this.github.getPRDiff(repo.owner, repo.name, pr.number)
       const changedFiles = parseDiffFileNames(diff)
 
       // 2. AI verdict
+      this.progress.update('asking AI for verdict')
       const verdictAgentResult = await this.ai.invokeAgent(buildAutoReviewPrompt(diff, changedFiles), process.cwd())
 
       let verdict: ReviewVerdict = 'merge'
@@ -47,6 +51,7 @@ export class PRReviewProcessor {
 
       // 3. Route based on verdict
       if (verdict === 'split' && !isSplitChild && isSplittable(changedFiles, diff)) {
+        this.progress.update('splitting into child PRs')
         const splitResult = await this.splitPR(repo, pr, diff, changedFiles)
         return {
           prNumber: pr.number,
@@ -60,6 +65,7 @@ export class PRReviewProcessor {
       }
 
       // Default: merge path
+      this.progress.update('running tests before merge')
       const mergeResult = await this.mergeAfterTests(repo, pr)
       return {
         prNumber: pr.number,
@@ -92,14 +98,18 @@ export class PRReviewProcessor {
 
     try {
       const repoUrl = repo.cloneUrl ?? `https://github.com/${repo.owner}/${repo.name}.git`
+      this.progress.update('cloning repo for merge check')
       await this.git.clone(repoUrl, tempDir, pr.base)
+      this.progress.update('fetching PR branch')
       await this.git.fetch(tempDir, 'origin', pr.head)
+      this.progress.update('checking out PR branch')
       await this.git.checkout(tempDir, pr.head)
 
       // Run tests if required
       if (this.config.autoMergeRequireTests !== false) {
         const testCommand = detectTestCommand(tempDir, repo)
         if (testCommand !== null) {
+          this.progress.update(`running ${testCommand}`)
           const testResult = runTests(tempDir, testCommand)
           if (!testResult.passed) {
             await this.postComment(repo, pr.number,
@@ -111,6 +121,7 @@ export class PRReviewProcessor {
 
       // Merge via API
       const mergeMethod = this.config.mergeMethod ?? 'merge'
+      this.progress.update('merging via GitHub API')
       await this.github.mergePullRequest(repo.owner, repo.name, pr.number, mergeMethod)
 
       await this.postComment(repo, pr.number,
@@ -121,6 +132,7 @@ export class PRReviewProcessor {
       const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
       return { merged: false, error: failure.message, retryable: failure.retryable }
     } /* v8 ignore next */ finally {
+      this.progress.update('cleanup complete')
       cleanupTempDir(tempDir)
     }
   }

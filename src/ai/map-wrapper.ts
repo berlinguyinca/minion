@@ -8,7 +8,7 @@ import { AIInvocationError } from './errors.js'
 import type { AIModel, AIProvider, AgentResult, StructuredResult, ProviderConfig } from '../types/index.js'
 
 const DEFAULT_AGENT_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
-const EXPECTED_HEADLESS_VERSION = 1
+const SUPPORTED_HEADLESS_VERSIONS = [1, 2] as const
 
 const MINION_PERSONALITY = `You are a Minion from Despicable Me! While doing your work competently, express yourself in Minion-speak throughout your responses:
 - Mix in Minion words: bello (hello), poopaye (goodbye), tank yu (thank you), banana, tulaliloo ti amo (I love you), bee-do bee-do (alarm)
@@ -111,25 +111,23 @@ export class MAPWrapper implements AIProvider {
       model: 'map',
     })
 
-    // Parse the last non-empty line as JSON (MAP headless outputs final result as last line)
-    const lines = stdout.trim().split('\n')
-    const jsonLine = lines[lines.length - 1]
-    if (!jsonLine) {
+    const jsonPayload = extractLastJsonObject(stdout)
+    if (!jsonPayload) {
       throw new AIInvocationError('map', 1, 'MAP produced no output')
     }
 
     let result: MAPResultPayload | MAPResultPayloadV2
     try {
-      result = JSON.parse(jsonLine) as MAPResultPayload | MAPResultPayloadV2
+      result = JSON.parse(jsonPayload) as MAPResultPayload | MAPResultPayloadV2
     } catch {
-      throw new AIInvocationError('map', 1, 'MAP produced invalid JSON: ' + jsonLine.slice(0, 200))
+      throw new AIInvocationError('map', 1, 'MAP produced invalid JSON: ' + jsonPayload.slice(0, 200))
     }
 
     // Version compatibility check
     if (result.version !== 1 && result.version !== 2) {
       throw new AIInvocationError(
         'map', 1,
-        `MAP headless result version mismatch: expected ${EXPECTED_HEADLESS_VERSION}, got ${result.version}. Update multi-agent-pipeline.`,
+        `MAP headless result version mismatch: expected ${SUPPORTED_HEADLESS_VERSIONS.join(' or ')}, got ${result.version}. Update multi-agent-pipeline.`,
       )
     }
 
@@ -196,4 +194,68 @@ export class MAPWrapper implements AIProvider {
     writeFileSync(configPath, yamlStringify(mapConfig), 'utf-8')
     return configPath
   }
+}
+
+function extractLastJsonObject(text: string): string | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  const starts: number[] = []
+  for (let index = trimmed.indexOf('{'); index !== -1; index = trimmed.indexOf('{', index + 1)) {
+    starts.push(index)
+  }
+
+  let lastParsable: string | null = null
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const start = starts[i]
+    if (start === undefined) continue
+    const candidate = sliceBalancedJson(trimmed, start)
+    if (!candidate) continue
+    try {
+      const parsed = JSON.parse(candidate) as { version?: unknown }
+      lastParsable ??= candidate
+      if (parsed.version === 1 || parsed.version === 2) return candidate
+    } catch {
+      continue
+    }
+  }
+
+  return lastParsable
+}
+
+function sliceBalancedJson(text: string, startIndex: number): string | null {
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '{') {
+      depth += 1
+      continue
+    }
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(startIndex, index + 1)
+      if (depth < 0) return null
+    }
+  }
+
+  return null
 }

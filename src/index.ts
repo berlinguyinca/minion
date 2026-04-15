@@ -6,7 +6,9 @@ import { platform } from 'node:os'
 import { GitHubClient } from './github/index.js'
 import { MAPWrapper, polishIssueText } from './ai/index.js'
 import { StateManager, loadConfig } from './config/index.js'
-import { PipelineRunner } from './pipeline/index.js'
+import { GitOperations } from './git/index.js'
+import { ExplicitIssueRunner, IssueProcessor, PipelineRunner, SpecCache } from './pipeline/index.js'
+import { createIssueWorkspace } from './cli/workspace.js'
 import type { PipelineConfig, RepoConfig } from './types/index.js'
 
 const REPO_URL = 'https://github.com/berlinguyinca/autodev'
@@ -69,6 +71,7 @@ Config file mode:
 
 Interactive mode:
   --tui                     Launch interactive issue creator (requires TTY)
+  --gui                     Launch Electron issue manager GUI
 
 General:
   --poll <seconds>          Continuous polling mode (min: ${MIN_POLL_SECONDS}s)
@@ -166,6 +169,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       'merge-method': { type: 'string' },
       poll: { type: 'string' },
       tui: { type: 'boolean', default: false },
+      gui: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
     allowPositionals: false,
@@ -174,6 +178,64 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
   if (values.help) {
     printHelp()
     return 0
+  }
+
+  // --gui mode
+  if (values.gui) {
+    const blockedFlags = [
+      'tui',
+      'repo',
+      'config',
+      'poll',
+      'branch',
+      'max-issues',
+      'test-command',
+      'model',
+      'timeout',
+      'merge-method',
+    ] as const
+    const combined = blockedFlags.filter((flag) => values[flag] !== undefined && values[flag] !== false)
+    if (combined.length > 0) {
+      console.error(`Error: --gui cannot be combined with ${combined.map((flag) => `--${flag}`).join(', ')}`)
+      return 1
+    }
+
+    let token = process.env['GITHUB_TOKEN']
+    if (!token) {
+      try {
+        token = execSync('gh auth token', { encoding: 'utf-8' }).trim()
+      } catch {
+        // gh CLI not available or not authenticated
+      }
+    }
+    if (!token) {
+      console.error('Error: GITHUB_TOKEN environment variable is required (or authenticate via `gh auth login`)')
+      return 1
+    }
+
+    const guiConfigPath = findDefaultConfig()
+    const guiConfig: PipelineConfig = guiConfigPath !== undefined && existsSync(guiConfigPath)
+      ? loadConfig(guiConfigPath)
+      : { repos: [] }
+    const github = new GitHubClient(token)
+    const state = new StateManager('.pipeline-state.json', guiConfig.retry)
+    const mapProviderConfig = {
+      ...(guiConfig.mapTimeoutMs !== undefined ? { timeoutMs: guiConfig.mapTimeoutMs } : {}),
+      ...(guiConfig.mapModel !== undefined ? { model: guiConfig.mapModel } : {}),
+    }
+    const ai = new MAPWrapper(Object.keys(mapProviderConfig).length > 0 ? mapProviderConfig : undefined)
+    const processor = new IssueProcessor(github, ai, new GitOperations(), state, new SpecCache())
+    const explicitRunner = new ExplicitIssueRunner(github, processor)
+    const mapAvailable = MAPWrapper.detect().available
+    const workspace = createIssueWorkspace({
+      github,
+      configRepos: guiConfig.repos,
+      state,
+      ...(mapAvailable ? { polishText: (title: string, body: string) => polishIssueText(title, body) } : {}),
+      explicitRunner,
+    })
+    const { runGui } = await import('./gui/main.js')
+    return runGui(workspace)
   }
 
   // --tui mode
@@ -210,24 +272,12 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
     const mapAvailable = MAPWrapper.detect().available
     const tuiState = new StateManager('.pipeline-state.json')
     const { runTui } = await import('./cli/tui.js')
-    return runTui({
-      listUserRepos: () => github.listUserRepos(),
-      fetchLabels: (o, n) => github.fetchLabels(o, n),
-      fetchOpenIssues: async (o, n) => {
-        const issues = await github.fetchOpenIssues(o, n)
-        return issues.map((i) => ({ number: i.number, title: i.title, labels: i.labels }))
-      },
-      fetchIssueDetail: (o, n, num) => github.fetchIssueDetail(o, n, num),
-      createIssue: (o, n, t, b, l) => github.createIssue(o, n, t, b, l),
-      updateIssue: (o, n, num, t, b) => github.updateIssue(o, n, num, t, b),
-      closeIssue: (o, n, num) => github.closeIssue(o, n, num),
-      listIssueComments: (o, n, num) => github.listIssueComments(o, n, num),
-      postIssueComment: (o, n, num, body) => github.postIssueComment(o, n, num, body),
-      polishText: mapAvailable ? (t, b) => polishIssueText(t, b) : undefined,
+    return runTui(createIssueWorkspace({
+      github,
       configRepos,
-      getInputMode: () => tuiState.getInputMode(),
-      setInputMode: (mode) => tuiState.setInputMode(mode),
-    })
+      state: tuiState,
+      ...(mapAvailable ? { polishText: (t: string, b: string) => polishIssueText(t, b) } : {}),
+    }))
   }
 
   // Mutual exclusion check

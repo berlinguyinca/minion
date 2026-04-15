@@ -6,6 +6,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('../../src/pipeline/index.js', () => ({
   PipelineRunner: vi.fn(),
+  IssueProcessor: vi.fn(),
+  ExplicitIssueRunner: vi.fn(),
+  SpecCache: vi.fn(),
+}))
+
+vi.mock('../../src/git/index.js', () => ({
+  GitOperations: vi.fn(),
+}))
+
+vi.mock('../../src/gui/main.js', () => ({
+  runGui: vi.fn().mockResolvedValue(0),
 }))
 
 vi.mock('../../src/github/index.js', () => ({
@@ -40,6 +51,7 @@ vi.mock('node:fs', async (importOriginal) => {
 
 import { run } from '../../src/index.js'
 import { PipelineRunner } from '../../src/pipeline/index.js'
+import { runGui } from '../../src/gui/main.js'
 import { GitHubClient } from '../../src/github/index.js'
 import { MAPWrapper } from '../../src/ai/index.js'
 import { StateManager, loadConfig } from '../../src/config/index.js'
@@ -213,6 +225,47 @@ describe('CLI run()', () => {
 
     const allOutput = spy.mock.calls.map(c => c[0]).join('\n')
     expect(allOutput).toContain('--poll')
+    spy.mockRestore()
+  })
+
+  it('prints --gui in help output', async () => {
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await run(['--help'])
+
+    const allOutput = spy.mock.calls.map(c => c[0]).join('\n')
+    expect(allOutput).toContain('--gui')
+    spy.mockRestore()
+  })
+
+  it('launches GUI mode with a workspace', async () => {
+    const code = await run(['--gui'])
+
+    expect(code).toBe(0)
+    expect(runGui).toHaveBeenCalledWith(expect.objectContaining({
+      listUserRepos: expect.any(Function),
+      runExplicitIssue: expect.any(Function),
+    }))
+  })
+
+  it.each([
+    ['--tui'],
+    ['--repo', 'acme/api'],
+    ['--config', 'config.yaml'],
+    ['--poll', '30'],
+    ['--branch', 'dev'],
+    ['--max-issues', '1'],
+    ['--test-command', 'pnpm test'],
+    ['--model', 'map'],
+    ['--timeout', '1000'],
+    ['--merge-method', 'squash'],
+  ])('rejects --gui with %s', async (...args) => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const code = await run(['--gui', ...args])
+
+    expect(code).toBe(1)
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('--gui cannot be combined'))
     spy.mockRestore()
   })
 

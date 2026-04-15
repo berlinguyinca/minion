@@ -8,6 +8,11 @@ import { createTempDir, cleanupTempDir, buildBranchName } from '../git/index.js'
 import { buildSpecPrompt, buildReviewPrompt, buildFollowUpPrompt } from './prompts.js'
 import { detectTestCommand, runTests } from './test-runner.js'
 import { humanizeAIError } from '../ai/errors.js'
+import { NoopProgressReporter, type ProgressReporter } from './progress.js'
+
+export interface ProcessIssueOptions {
+  bypassEligibility?: boolean
+}
 
 export class IssueProcessor {
   constructor(
@@ -16,6 +21,7 @@ export class IssueProcessor {
     private readonly git: GitOperations,
     private readonly state: StateManager,
     private readonly specCache?: SpecCache,
+    private readonly progress: ProgressReporter = new NoopProgressReporter(),
   ) {}
 
   private async postStatusComment(
@@ -30,12 +36,12 @@ export class IssueProcessor {
     }
   }
 
-  async processIssue(repo: RepoConfig, issue: Issue): Promise<ProcessingResult> {
+  async processIssue(repo: RepoConfig, issue: Issue, options: ProcessIssueOptions = {}): Promise<ProcessingResult> {
     const repoFullName = `${repo.owner}/${repo.name}`
     const base = repo.defaultBranch ?? 'main'
 
     // 1. Skip if already processed or not eligible for retry
-    if (!this.state.shouldProcessIssue(repoFullName, issue.number)) {
+    if (options.bypassEligibility !== true && !this.state.shouldProcessIssue(repoFullName, issue.number)) {
       return {
         issueNumber: issue.number,
         repoFullName,
@@ -82,14 +88,17 @@ export class IssueProcessor {
 
     try {
       const repoUrl = repo.cloneUrl ?? `https://github.com/${repo.owner}/${repo.name}.git`
+      this.progress?.update('cloning repo')
       await this.git.clone(repoUrl, tempDir, base)
 
       // 4. Create branch
+      this.progress?.update('creating branch')
       await this.git.createBranch(tempDir, branchName)
 
       // 5+6. AI Call: MAP handles full pipeline (spec → review → execute)
       try {
         const specPrompt = buildSpecPrompt(issue)
+        this.progress?.update('running AI spec generation')
         const agentResult = await this.ai.invokeAgent(specPrompt, tempDir)
 
         // Cache the model used for observability on re-runs
@@ -128,12 +137,14 @@ export class IssueProcessor {
       if (aiFailure === null) {
         const testCommand = detectTestCommand(tempDir, repo)
         if (testCommand !== null) {
+          this.progress?.update(`running ${testCommand}`)
           const testResult = runTests(tempDir, testCommand)
           testsPassed = testResult.passed
         }
       }
 
       // 8. Commit all changes
+      this.progress?.update('creating commit')
       const committed = await this.git.commitAll(tempDir, `ai: implement issue #${issue.number} — ${issue.title}`)
       if (!committed) {
         const error = 'AI run produced no commit; skipping PR creation.'
@@ -164,9 +175,11 @@ export class IssueProcessor {
       }
 
       // 9. Push branch
+      this.progress?.update('pushing branch')
       await this.git.push(tempDir, branchName)
 
       // 10. Create PR (regular or draft based on test result and AI failure)
+      this.progress?.update('opening pull request')
       const prTitle = `[AI] ${issue.title}`
       const prBody = aiFailure !== null
         ? `Automated implementation attempt for issue #${issue.number}.\n\n⚠️ ${humanizeAIError(aiFailure)}`
@@ -205,6 +218,7 @@ export class IssueProcessor {
       if (aiFailure === null) {
         try {
           const diff = await this.github.getPRDiff(repo.owner, repo.name, prNumber)
+          this.progress?.update('reviewing PR feedback')
           const reviewPrompt = buildReviewPrompt(diff)
           const reviewResult = await this.ai.invokeAgent(reviewPrompt, tempDir)
 
@@ -228,6 +242,7 @@ export class IssueProcessor {
             // 14. AI follow-up: address review comments
             try {
               const followUpPrompt = buildFollowUpPrompt(reviewComments)
+              this.progress?.update('addressing review comments')
               await this.ai.invokeAgent(followUpPrompt, tempDir)
 
               // 15. Commit and push follow-up
@@ -236,11 +251,11 @@ export class IssueProcessor {
                 await this.git.push(tempDir, branchName)
               }
             } catch (err) {
-              console.warn(`[pipeline] Review follow-up failed for ${repoFullName}#${issue.number}:`, err instanceof Error ? err.message : String(err))
+              console.warn(`[pipeline] Review follow-up failed for ${repoFullName}#${issue.number}:`, humanizeAIError(err instanceof Error ? err : new Error(String(err))))
             }
           }
         } catch (err) {
-          console.warn(`[pipeline] Review AI call failed for ${repoFullName}#${issue.number}:`, err instanceof Error ? err.message : String(err))
+          console.warn(`[pipeline] Review AI call failed for ${repoFullName}#${issue.number}:`, humanizeAIError(err instanceof Error ? err : new Error(String(err))))
         }
       }
 
@@ -253,6 +268,7 @@ export class IssueProcessor {
       }
 
       // 17. Post summary comment on issue
+      this.progress?.update('posting summary comment')
       const commentBody = [
         `🤖 **AI Implementation Attempt** — Issue #${issue.number}`,
         '',
@@ -266,6 +282,7 @@ export class IssueProcessor {
       await this.github.postIssueComment(repo.owner, repo.name, issue.number, commentBody)
 
       // 18. Mark issue as processed in state
+      this.progress?.update('recording state')
       this.state.markIssueOutcome(repoFullName, issue.number, {
         status: isDraft ? 'partial' : 'success',
         lastAttempt: new Date().toISOString(),
@@ -314,6 +331,7 @@ export class IssueProcessor {
       if (prUrl !== undefined) failResult.prUrl = prUrl
       return failResult
     } /* v8 ignore next */ finally {
+      this.progress?.update('cleanup complete')
       cleanupTempDir(tempDir)
     }
   }
