@@ -18,7 +18,12 @@ export const GUI_IPC_CHANNELS = {
 
 export function registerGuiIpcHandlers(ipcMain: Pick<IpcMain, 'handle'>, workspace: IssueWorkspace): void {
   ipcMain.handle(GUI_IPC_CHANNELS.listRepos, async () => {
-    const apiRepos = await workspace.listUserRepos()
+    let apiRepos: Awaited<ReturnType<IssueWorkspace['listUserRepos']>> = []
+    try {
+      apiRepos = await workspace.listUserRepos()
+    } catch {
+      apiRepos = []
+    }
     const seen = new Set<string>()
     const repos: RepoConfig[] = []
     for (const repo of [...workspace.configRepos, ...apiRepos]) {

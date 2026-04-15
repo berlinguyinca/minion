@@ -45,8 +45,10 @@ describe('createRendererHtml', () => {
     expect(script).toContain('issueCache')
     expect(script).toContain('commentCache')
     expect(script).toContain('requestSeq')
+    expect(script).toContain('runLog')
     expect(script).toContain('createDocumentFragment')
     expect(script).toContain('renderRunSummary')
+    expect(script).toContain('renderRunSummary(state.runResult, state.runLog)')
   })
 
   it('includes run result summary hooks and telemetry compatibility messaging', () => {

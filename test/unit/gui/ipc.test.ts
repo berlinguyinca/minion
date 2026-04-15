@@ -32,4 +32,29 @@ describe('registerGuiIpcHandlers', () => {
     await expect(handlers.get(GUI_IPC_CHANNELS.runIssue)?.({}, { owner: 'api', name: 'repo' }, 1)).resolves.toEqual({ issueNumber: 1, success: true })
     expect(workspace.runExplicitIssue).toHaveBeenCalledWith({ owner: 'api', name: 'repo' }, 1)
   })
+
+  it('falls back to configured repos when API repo listing fails', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>()
+    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler)) }
+    const workspace = {
+      configRepos: [{ owner: 'cfg', name: 'repo' }],
+      listUserRepos: vi.fn().mockRejectedValue(new Error('api unavailable')),
+      fetchLabels: vi.fn(),
+      fetchOpenIssues: vi.fn(),
+      fetchIssueDetail: vi.fn(),
+      listIssueComments: vi.fn(),
+      createIssue: vi.fn(),
+      updateIssue: vi.fn(),
+      closeIssue: vi.fn(),
+      postIssueComment: vi.fn(),
+      getInputMode: vi.fn(),
+      setInputMode: vi.fn(),
+    }
+
+    registerGuiIpcHandlers(ipcMain as never, workspace as never)
+
+    await expect(handlers.get(GUI_IPC_CHANNELS.listRepos)?.({})).resolves.toEqual([
+      { owner: 'cfg', name: 'repo' },
+    ])
+  })
 })

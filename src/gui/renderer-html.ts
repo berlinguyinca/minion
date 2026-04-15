@@ -203,6 +203,7 @@ export function createRendererScript(): string {
     busy: { repos: false, issues: false, issue: false, run: false },
     filter: '',
     runResult: null,
+    runLog: 'No run yet.',
   };
 
   const $ = (id) => document.getElementById(id);
@@ -324,11 +325,13 @@ export function createRendererScript(): string {
     clearAndAppend(box, fragment);
   }
 
-  function renderRunSummary(result) {
+  function renderRunSummary(result, runLog) {
     const summary = $('run-summary');
     if (!result) {
-      summary.innerHTML = '<div class="empty-state">Detailed model trace requires MAP telemetry support. Start MAP to see run output.</div>';
-      $('run-log').textContent = 'No run yet.';
+      summary.innerHTML = state.busy.run
+        ? '<div class="loading-state">MAP is running…</div>'
+        : '<div class="empty-state">Detailed model trace requires MAP telemetry support. Start MAP to see run output.</div>';
+      $('run-log').textContent = runLog;
       return;
     }
     const status = result.success ? 'success' : 'error';
@@ -343,7 +346,7 @@ export function createRendererScript(): string {
 
   function renderRunPanel() {
     $('start-run').disabled = !state.repo || !state.issue || state.busy.run;
-    renderRunSummary(state.runResult);
+    renderRunSummary(state.runResult, state.runLog);
   }
 
   function renderAll() {
@@ -377,6 +380,7 @@ export function createRendererScript(): string {
     state.repo = { owner, name };
     state.issue = null;
     state.runResult = null;
+    state.runLog = 'No run yet.';
     renderAll();
     await loadIssues(state.repo);
   }
@@ -416,6 +420,7 @@ export function createRendererScript(): string {
       if (seq !== state.requestSeq.issue) return;
       state.commentCache.set(key, comments);
       state.runResult = null;
+      state.runLog = 'No run yet.';
       setStatus('Loaded issue #' + number, 'success');
     } catch (err) {
       setStatus(err.message || String(err), 'error');
@@ -468,7 +473,7 @@ export function createRendererScript(): string {
     if (!state.repo || !state.issue) return setStatus('Load an issue first', 'warning');
     const seq = ++state.requestSeq.run;
     state.busy.run = true;
-    $('run-log').textContent = 'Running MAP for issue #' + state.issue.number + '…';
+    state.runLog = 'Running MAP for issue #' + state.issue.number + '…';
     renderRunPanel();
     try {
       const result = await invoke(channels.runIssue, state.repo, state.issue.number);
@@ -477,7 +482,7 @@ export function createRendererScript(): string {
       setStatus('MAP run finished', result.success ? 'success' : 'error');
     } catch (err) {
       setStatus(err.message || String(err), 'error');
-      $('run-log').textContent = err.stack || err.message || String(err);
+      state.runLog = err.stack || err.message || String(err);
     } finally {
       if (seq === state.requestSeq.run) state.busy.run = false;
       renderRunPanel();
