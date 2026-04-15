@@ -3,6 +3,7 @@ dist/
 coverage/
 .pipeline-state.json
 .pipeline-cache/
+.codesight/
 *.log
 .DS_Store
 .omx/

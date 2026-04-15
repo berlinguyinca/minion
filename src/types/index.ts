@@ -64,6 +64,7 @@ export interface PROutcome {
   lastAttempt: string        // ISO 8601
   attemptCount: number
   error?: string
+  retryable?: boolean
 }
 
 export interface PipelineState {
@@ -145,6 +146,7 @@ export interface PRReviewResult {
   merged: boolean
   splitInto: number[]   // PR numbers of child PRs (empty if merged or failed)
   error?: string
+  retryable?: boolean
 }
 
 export interface SplitGroup {
@@ -164,6 +166,7 @@ export interface MergeResult {
   merged: boolean
   conflictsResolved: number
   error?: string
+  retryable?: boolean
 }
 
 export interface ConflictFile {

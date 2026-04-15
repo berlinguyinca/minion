@@ -4,6 +4,7 @@ import type { GitOperations } from '../git/operations.js'
 import { createTempDir, cleanupTempDir } from '../git/index.js'
 import { buildAutoReviewPrompt, buildSplitPlanPrompt } from './prompts.js'
 import { detectTestCommand, runTests } from './test-runner.js'
+import { classifyAIError } from '../ai/errors.js'
 
 /** Minimum thresholds below which a PR is too small to split. */
 const MIN_FILES_TO_SPLIT = 5
@@ -53,6 +54,7 @@ export class PRReviewProcessor {
           verdict: 'split',
           merged: false,
           splitInto: splitResult.childPRs,
+          ...(splitResult.retryable !== undefined ? { retryable: splitResult.retryable } : {}),
           ...(splitResult.error !== undefined ? { error: splitResult.error } : {}),
         }
       }
@@ -65,18 +67,27 @@ export class PRReviewProcessor {
         verdict: 'merge',
         merged: mergeResult.merged,
         splitInto: [],
+        ...(mergeResult.retryable !== undefined ? { retryable: mergeResult.retryable } : {}),
         ...(mergeResult.error !== undefined ? { error: mergeResult.error } : {}),
       }
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
-      return { prNumber: pr.number, repoFullName, verdict: 'merge', merged: false, splitInto: [], error }
+      const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+      return {
+        prNumber: pr.number,
+        repoFullName,
+        verdict: 'merge',
+        merged: false,
+        splitInto: [],
+        error: failure.message,
+        retryable: failure.retryable,
+      }
     }
   }
 
   private async mergeAfterTests(
     repo: RepoConfig,
     pr: PRInfo,
-  ): Promise<{ merged: boolean; error?: string }> {
+  ): Promise<{ merged: boolean; error?: string; retryable?: boolean }> {
     const tempDir = createTempDir()
 
     try {
@@ -107,8 +118,8 @@ export class PRReviewProcessor {
 
       return { merged: true }
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
-      return { merged: false, error }
+      const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+      return { merged: false, error: failure.message, retryable: failure.retryable }
     } /* v8 ignore next */ finally {
       cleanupTempDir(tempDir)
     }
@@ -119,7 +130,7 @@ export class PRReviewProcessor {
     pr: PRInfo,
     diff: string,
     changedFiles: string[],
-  ): Promise<{ childPRs: number[]; error?: string }> {
+  ): Promise<{ childPRs: number[]; error?: string; retryable?: boolean }> {
     // 1. Get split plan from AI
     const planAgentResult = await this.ai.invokeAgent(buildSplitPlanPrompt(diff, changedFiles), process.cwd())
 
@@ -130,7 +141,7 @@ export class PRReviewProcessor {
       // Agent didn't return structured output
     }
     if (!plan || plan.groups.length < 2) {
-      return { childPRs: [], error: 'AI produced invalid split plan (fewer than 2 groups)' }
+      return { childPRs: [], error: 'AI produced invalid split plan (fewer than 2 groups)', retryable: true }
     }
 
     // 2. Validate: every changed file must appear in exactly one group
@@ -138,7 +149,7 @@ export class PRReviewProcessor {
     for (const group of plan.groups) {
       for (const file of group.files) {
         if (assignedFiles.has(file)) {
-          return { childPRs: [], error: `File "${file}" appears in multiple groups` }
+          return { childPRs: [], error: `File "${file}" appears in multiple groups`, retryable: true }
         }
         assignedFiles.add(file)
       }
@@ -194,7 +205,7 @@ export class PRReviewProcessor {
 
     return {
       childPRs,
-      ...(childPRs.length === 0 ? { error: 'no child PRs could be created from split plan' } : {}),
+      ...(childPRs.length === 0 ? { error: 'no child PRs could be created from split plan', retryable: true } : {}),
     }
   }
 

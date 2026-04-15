@@ -4,6 +4,7 @@ import {
   AIBinaryNotFoundError,
   AIInvocationError,
   AIRateLimitError,
+  classifyAIError,
   detectRateLimitError,
   humanizeAIError,
 } from '../../../src/ai/errors.js'
@@ -176,6 +177,30 @@ describe('humanizeAIError', () => {
     expect(result).toContain('…')
     expect(result).not.toContain(longResult) // should be truncated
     expect(result.length).toBeLessThan(300)
+  })
+
+  it('summarizes structured AIInvocationError output without leaking JSON', () => {
+    const err = new AIInvocationError(
+      'map',
+      1,
+      JSON.stringify({
+        version: 1,
+        success: false,
+        spec: '# Specification: Granular AI Provider Configuration',
+        outputDir: '/tmp/out',
+      }),
+    )
+
+    const result = humanizeAIError(err)
+
+    expect(result).toContain('AI failed (model: map, exit: 1)')
+    expect(result).not.toContain('"spec"')
+    expect(result).not.toContain('"success":false')
+  })
+
+  it('classifies AIInvocationError as retryable but not binary-not-found errors', () => {
+    expect(classifyAIError(new AIInvocationError('claude', 1, 'boom')).retryable).toBe(true)
+    expect(classifyAIError(new AIBinaryNotFoundError('claude')).retryable).toBe(false)
   })
 
   it('falls back to truncation when AIInvocationError message contains invalid JSON', () => {

@@ -6,6 +6,7 @@ import { MergeProcessor } from './merge-processor.js'
 import { PRReviewProcessor } from './pr-review-processor.js'
 import { SpecCache } from './spec-cache.js'
 import { GitOperations } from '../git/index.js'
+import { classifyAIError } from '../ai/errors.js'
 
 export class PipelineRunner {
   private readonly processor: IssueProcessor
@@ -45,7 +46,8 @@ export class PipelineRunner {
       try {
         issues = await this.github.fetchOpenIssues(repo.owner, repo.name)
       } catch (err) {
-        console.error(`Failed to fetch issues for ${repo.owner}/${repo.name}:`, err)
+        const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+        console.error(`Failed to fetch issues for ${repo.owner}/${repo.name}:`, failure.message)
         failed++
         continue
       }
@@ -61,7 +63,8 @@ export class PipelineRunner {
             failed++
           }
         } catch (err) {
-          console.error(`Error processing issue #${issue.number}:`, err)
+          const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+          console.error(`Error processing issue #${issue.number}:`, failure.message)
           failed++
         }
 
@@ -107,23 +110,27 @@ export class PipelineRunner {
                   attemptCount: prevCount + 1,
                 })
               } else {
-                console.warn(`[merge] Failed to merge PR #${pr.number}: ${result.error ?? 'unknown'}`)
+                const failure = result.error !== undefined ? classifyAIError(result.error) : undefined
+                if (failure !== undefined) {
+                  console.warn(`[merge] Failed to merge PR #${pr.number}: ${failure.message}`)
+                }
                 this.state.markPROutcome(
                   repoFullName,
                   pr.number,
-                  this.buildFailedPROutcome(prevCount + 1, result.error),
+                  this.buildFailedPROutcome(prevCount + 1, failure?.message ?? result.error, result.retryable ?? failure?.retryable),
                 )
               }
             }
           } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : String(err)
-            console.error(`[merge] Error checking/merging PR #${pr.number}:`, errorMsg)
+            const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+            console.error(`[merge] Error checking/merging PR #${pr.number}:`, failure.message)
             const prevCount = this.state.getPRAttemptCount(repoFullName, pr.number)
-            this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, errorMsg))
+            this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, failure.message, failure.retryable))
           }
         }
       } catch (err) {
-        console.error(`[merge] Failed to list PRs for ${repo.owner}/${repo.name}:`, err instanceof Error ? err.message : String(err))
+        const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+        console.error(`[merge] Failed to list PRs for ${repo.owner}/${repo.name}:`, failure.message)
       }
     }
   }
@@ -172,28 +179,30 @@ export class PipelineRunner {
                 attemptCount: prevCount + 1,
               })
             } else {
-              if (result.error !== undefined) {
-                console.warn(`[review] Failed to process PR #${pr.number}: ${result.error}`)
+              const failure = result.error !== undefined ? classifyAIError(result.error) : undefined
+              if (failure !== undefined) {
+                console.warn(`[review] Failed to process PR #${pr.number}: ${failure.message}`)
               }
               this.state.markPROutcome(
                 repoFullName,
                 pr.number,
-                this.buildFailedPROutcome(prevCount + 1, result.error),
+                this.buildFailedPROutcome(prevCount + 1, failure?.message ?? result.error, result.retryable ?? failure?.retryable),
               )
             }
           } catch (err) {
-            const errorMsg = err instanceof Error ? err.message : String(err)
-            console.error(`[review] Error reviewing PR #${pr.number}:`, errorMsg)
-            this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, errorMsg))
+            const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+            console.error(`[review] Error reviewing PR #${pr.number}:`, failure.message)
+            this.state.markPROutcome(repoFullName, pr.number, this.buildFailedPROutcome(prevCount + 1, failure.message, failure.retryable))
           }
         }
       } catch (err) {
-        console.error(`[review] Failed to list PRs for ${repo.owner}/${repo.name}:`, err instanceof Error ? err.message : String(err))
+        const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+        console.error(`[review] Failed to list PRs for ${repo.owner}/${repo.name}:`, failure.message)
       }
     }
   }
 
-  private buildFailedPROutcome(attemptCount: number, error?: string): PROutcome {
+  private buildFailedPROutcome(attemptCount: number, error?: string, retryable?: boolean): PROutcome {
     const outcome: PROutcome = {
       status: 'failed',
       lastAttempt: new Date().toISOString(),
@@ -201,6 +210,9 @@ export class PipelineRunner {
     }
     if (error !== undefined) {
       outcome.error = error
+    }
+    if (retryable !== undefined) {
+      outcome.retryable = retryable
     }
     return outcome
   }

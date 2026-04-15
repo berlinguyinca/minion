@@ -603,6 +603,32 @@ describe('PipelineRunner', () => {
     )
   })
 
+  it('auto-review phase: logs a readable failure when review returns structured AI output', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([])
+    reviewProcessorMock.reviewPR.mockResolvedValue({
+      prNumber: 10,
+      repoFullName: 'acme/api',
+      verdict: 'merge',
+      merged: false,
+      splitInto: [],
+      error: 'AI invocation failed (model: map, exit: 1): {"version":1,"success":false,"spec":"# Specification: Granular AI Provider Configuration"}',
+      retryable: true,
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+
+    const warnMessages = warnSpy.mock.calls.map((call) => call.map((part) => String(part)).join(' '))
+    warnSpy.mockRestore()
+
+    expect(warnMessages.some((msg) => msg.includes('[review] Failed to process PR #10:'))).toBe(true)
+    expect(warnMessages.some((msg) => msg.includes('"spec"'))).toBe(false)
+  })
+
   it('merge phase: skips PRs where shouldReviewPR returns false', async () => {
     const pr = makePR(10)
     githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
@@ -658,6 +684,37 @@ describe('PipelineRunner', () => {
     expect(stateMock.markPROutcome).toHaveBeenCalledWith(
       'acme/api', 10,
       expect.objectContaining({ status: 'failed', error: 'conflicts unresolvable' }),
+    )
+  })
+
+  it('merge phase: records retryable merge failures from the processor', async () => {
+    const pr = makePR(10)
+    githubMock.listOpenPRsWithLabel.mockResolvedValue([pr])
+    githubMock.listPRComments.mockResolvedValue([
+      { id: 1, body: '/merge', user: 'dev', createdAt: '2024-01-01T00:00:00Z' },
+    ])
+    mergeProcessorMock.processMergeRequest.mockResolvedValue({
+      prNumber: 10,
+      repoFullName: 'acme/api',
+      merged: false,
+      conflictsResolved: 0,
+      error: 'AI invocation failed (model: map, exit: 1): {"version":1,"success":false,"spec":"# Specification: Granular AI Provider Configuration"}',
+      retryable: true,
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await runner.run()
+    logSpy.mockRestore()
+    warnSpy.mockRestore()
+
+    expect(stateMock.markPROutcome).toHaveBeenCalledWith(
+      'acme/api', 10,
+      expect.objectContaining({
+        status: 'failed',
+        error: expect.stringContaining('AI failed'),
+        retryable: true,
+      }),
     )
   })
 

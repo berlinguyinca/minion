@@ -121,7 +121,7 @@ export class IssueProcessor {
         }
       } catch (err) {
         aiFailure = err instanceof Error ? err : new Error(String(err))
-        console.error(`[pipeline] AI call failed for ${repoFullName}#${issue.number}:`, aiFailure.message)
+        console.error(`[pipeline] AI call failed for ${repoFullName}#${issue.number}:`, humanizeAIError(aiFailure))
       }
 
       // 7. Detect and run tests

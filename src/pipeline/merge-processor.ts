@@ -3,6 +3,7 @@ import type { GitHubClient } from '../github/client.js'
 import type { GitOperations } from '../git/operations.js'
 import { createTempDir, cleanupTempDir } from '../git/index.js'
 import { buildConflictResolutionPrompt } from './prompts.js'
+import { classifyAIError } from '../ai/errors.js'
 
 const MAX_REBASE_ROUNDS = 10
 
@@ -60,7 +61,7 @@ export class MergeProcessor {
           if (!resolvedContent) {
             await this.git.abortRebase(tempDir)
             await this.postMergeComment(repo, pr.number, `Unable to auto-merge: AI could not resolve conflict in \`${conflict.path}\`.`)
-            return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: 'AI conflict resolution failed' }
+            return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: 'AI conflict resolution failed', retryable: true }
           }
 
           await this.git.resolveConflict(tempDir, conflict.path, resolvedContent)
@@ -74,7 +75,7 @@ export class MergeProcessor {
       if (!rebaseResult.success) {
         await this.git.abortRebase(tempDir)
         await this.postMergeComment(repo, pr.number, 'Unable to auto-merge: exceeded maximum conflict resolution rounds.')
-        return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: 'max rounds exceeded' }
+        return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: 'max rounds exceeded', retryable: true }
       }
 
       // 7. Force-push rebased branch
@@ -92,8 +93,8 @@ export class MergeProcessor {
 
       return { prNumber: pr.number, repoFullName, merged: true, conflictsResolved: totalConflictsResolved }
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
-      return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error }
+      const failure = classifyAIError(err instanceof Error ? err : new Error(String(err)))
+      return { prNumber: pr.number, repoFullName, merged: false, conflictsResolved: totalConflictsResolved, error: failure.message, retryable: failure.retryable }
     } /* v8 ignore next */ finally {
       cleanupTempDir(tempDir)
     }

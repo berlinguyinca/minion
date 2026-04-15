@@ -158,6 +158,7 @@ export class StateManager {
     const outcome = repoPRs[prNumber]
     if (outcome === undefined) return true
     if (outcome.status === 'merged' || outcome.status === 'split') return false
+    if (outcome.retryable === true) return true
 
     // Failed: check retry eligibility
     if (outcome.attemptCount >= this.maxAttempts) return false

@@ -368,6 +368,21 @@ describe('StateManager', () => {
       })
       expect(sm.shouldReviewPR('owner/repo', 12)).toBe(false)
     })
+
+    it('returns true for a retryable failed PR even after max attempts', () => {
+      const sm = new StateManager(makeTempStatePath(), {
+        maxAttempts: 3,
+        backoffMinutes: 60,
+      })
+      sm.markPROutcome('owner/repo', 13, {
+        status: 'failed',
+        lastAttempt: new Date().toISOString(),
+        attemptCount: 3,
+        error: 'AI invocation failed',
+        retryable: true,
+      })
+      expect(sm.shouldReviewPR('owner/repo', 13)).toBe(true)
+    })
   })
 
   describe('markPROutcome', () => {
