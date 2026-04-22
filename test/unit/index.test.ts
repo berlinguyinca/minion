@@ -258,6 +258,8 @@ describe('CLI run()', () => {
     ['--test-command', 'pnpm test'],
     ['--model', 'map'],
     ['--timeout', '1000'],
+    ['--map-command', 'npm'],
+    ['--map-arg', 'run'],
     ['--merge-method', 'squash'],
   ])('rejects --gui with %s', async (...args) => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -341,6 +343,22 @@ describe('CLI run()', () => {
 
     const configArg = vi.mocked(PipelineRunner).mock.calls[0]?.[0]
     expect(configArg?.mergeMethod).toBe('squash')
+  })
+
+  it('passes --map-command and repeatable --map-arg to the MAP provider in --repo mode', async () => {
+    const runnerInstance = { run: vi.fn().mockResolvedValue(0) }
+    vi.mocked(PipelineRunner).mockImplementation(() => runnerInstance as unknown as PipelineRunner)
+
+    await run(['--repo', 'acme/api', '--map-command', 'npm', '--map-arg', 'run', '--map-arg', 'map:dev', '--map-arg=--'])
+
+    expect(MAPWrapper).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'npm',
+      args: ['run', 'map:dev', '--'],
+    }))
+    expect((MAPWrapper as unknown as { detect: ReturnType<typeof vi.fn> }).detect).toHaveBeenCalledWith(expect.objectContaining({
+      command: 'npm',
+      args: ['run', 'map:dev', '--'],
+    }))
   })
 
   it('returns exit code 1 when --merge-method is invalid', async () => {

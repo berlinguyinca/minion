@@ -94,6 +94,20 @@ describe('loadConfig', () => {
     expect(config.mapTimeoutMs).toBe(60000)
   })
 
+  it('maps custom MAP command and default args when provided', () => {
+    const configPath = makeTempPath('repos.json')
+    writeFileSync(configPath, JSON.stringify({
+      repos: [],
+      mapCommand: 'npm',
+      mapArgs: ['run', 'map:dev', '--'],
+    }))
+
+    const config = loadConfig(configPath)
+
+    expect(config.mapCommand).toBe('npm')
+    expect(config.mapArgs).toEqual(['run', 'map:dev', '--'])
+  })
+
   it('throws descriptive error when config file is missing', () => {
     const configPath = join(tmpdir(), `nonexistent-${randomUUID()}.json`)
 

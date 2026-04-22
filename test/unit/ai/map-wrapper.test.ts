@@ -115,6 +115,28 @@ describe('MAPWrapper', () => {
     expect(opts?.cwd).toBe('/tmp/workdir')
   })
 
+  it('invokeAgent prepends configured command args before generated MAP args', async () => {
+    const customMap = new MAPWrapper({ command: 'npm', args: ['run', 'map:dev', '--'] })
+    spawnMock.mockReturnValue(makeFakeProcess({ stdout: mapSuccessFixture }))
+
+    await customMap.invokeAgent('fix the bug', '/tmp/workdir')
+
+    const [cmd, args] = spawnMock.mock.calls[0] as [string, string[]]
+    expect(cmd).toBe('npm')
+    expect(args.slice(0, 3)).toEqual(['run', 'map:dev', '--'])
+    expect(args).toContain('--headless')
+    expect(args).toContain('fix the bug')
+  })
+
+  it('detect uses configured command args before --version', () => {
+    execFileSyncMock.mockReturnValue('map-dev 2.0.0')
+
+    const result = MAPWrapper.detect({ command: 'pnpm', args: ['--dir', '../map', 'start', '--'] })
+
+    expect(result).toEqual({ available: true, version: 'map-dev 2.0.0' })
+    expect(execFileSyncMock).toHaveBeenCalledWith('pnpm', ['--dir', '../map', 'start', '--', '--version'], expect.any(Object))
+  })
+
   it('invokeAgent does NOT pass --config when no agents config', async () => {
     spawnMock.mockReturnValue(makeFakeProcess({ stdout: mapSuccessFixture }))
 

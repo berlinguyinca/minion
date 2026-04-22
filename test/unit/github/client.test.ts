@@ -232,6 +232,85 @@ describe('GitHubClient', () => {
       expect(issues).toHaveLength(2)
       expect(issues.map((i) => i.number)).toEqual([1, 2])
     })
+
+    it('fetches a single open issues page with pagination metadata', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listForRepo.mockResolvedValueOnce({
+        data: [
+          {
+            id: 7,
+            number: 7,
+            title: 'Paged issue',
+            body: 'body',
+            html_url: 'https://github.com/acme/api/issues/7',
+            labels: [{ name: 'perf' }],
+          },
+        ],
+        headers: {
+          link: '<https://api.github.com/repos/acme/api/issues?page=2>; rel="next"',
+        },
+      })
+
+      const client = new GitHubClient()
+      const page = await client.fetchOpenIssuesPage('acme', 'api', { page: 1, perPage: 25 })
+
+      expect(mocks.issues.listForRepo).toHaveBeenCalledWith(expect.objectContaining({
+        owner: 'acme',
+        repo: 'api',
+        state: 'open',
+        per_page: 25,
+        page: 1,
+      }))
+      expect(page).toMatchObject({
+        hasNextPage: true,
+        page: 1,
+        perPage: 25,
+      })
+      expect(page.issues).toHaveLength(1)
+      expect(page.issues[0]).toMatchObject({ number: 7, labels: ['perf'] })
+    })
+
+    it('passes AbortSignal and ETag headers to paged issue requests', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listForRepo.mockResolvedValueOnce({
+        data: [],
+        headers: { etag: '"abc123"' },
+      })
+      const controller = new AbortController()
+
+      const client = new GitHubClient()
+      const page = await client.fetchOpenIssuesPage('acme', 'api', {
+        page: 2,
+        perPage: 50,
+        etag: '"old"',
+        signal: controller.signal,
+      })
+
+      expect(mocks.issues.listForRepo).toHaveBeenCalledWith(expect.objectContaining({
+        page: 2,
+        per_page: 50,
+        headers: { 'If-None-Match': '"old"' },
+        request: { signal: controller.signal },
+      }))
+      expect(page.etag).toBe('"abc123"')
+    })
+
+    it('returns notModified metadata when GitHub responds with 304', async () => {
+      const mocks = getMockOctokit()
+      mocks.issues.listForRepo.mockRejectedValueOnce(Object.assign(new Error('Not modified'), { status: 304 }))
+
+      const client = new GitHubClient()
+      const page = await client.fetchOpenIssuesPage('acme', 'api', { page: 1, perPage: 50, etag: '"same"' })
+
+      expect(page).toMatchObject({
+        issues: [],
+        hasNextPage: false,
+        page: 1,
+        perPage: 50,
+        notModified: true,
+        etag: '"same"',
+      })
+    })
   })
 
   // -----------------------------------------------------------------------

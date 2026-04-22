@@ -9,7 +9,7 @@ import { StateManager, loadConfig } from './config/index.js'
 import { GitOperations } from './git/index.js'
 import { ExplicitIssueRunner, IssueProcessor, PipelineRunner, SpecCache } from './pipeline/index.js'
 import { createIssueWorkspace } from './cli/workspace.js'
-import type { PipelineConfig, RepoConfig } from './types/index.js'
+import type { PipelineConfig, ProviderConfig } from './types/index.js'
 
 const REPO_URL = 'https://github.com/berlinguyinca/autodev'
 const MIN_POLL_SECONDS = 30
@@ -64,6 +64,8 @@ Repository (CLI mode):
   --test-command <cmd>      Test command for the repo
   --model <model>           Model for MAP to use internally
   --timeout <ms>            MAP timeout in milliseconds (default: 120000)
+  --map-command <cmd>       MAP executable to run (default: map)
+  --map-arg <arg>           Default MAP command arg; repeatable (use --map-arg=-- for separator)
   --merge-method <method>   merge|squash|rebase (default: merge)
 
 Config file mode:
@@ -95,6 +97,8 @@ function buildConfigFromFlags(values: {
   'test-command'?: string
   model?: string
   timeout?: string
+  'map-command'?: string
+  'map-arg'?: string[]
   'merge-method'?: string
 }): PipelineConfig {
   const parsed = parseRepoSlug(values.repo)
@@ -136,6 +140,14 @@ function buildConfigFromFlags(values: {
     config.mapTimeoutMs = ms
   }
 
+  if (values['map-command'] !== undefined) {
+    config.mapCommand = values['map-command']
+  }
+
+  if (values['map-arg'] !== undefined) {
+    config.mapArgs = values['map-arg']
+  }
+
   if (values['merge-method'] !== undefined) {
     const method = values['merge-method']
     if (method !== 'merge' && method !== 'squash' && method !== 'rebase') {
@@ -145,6 +157,15 @@ function buildConfigFromFlags(values: {
   }
 
   return config
+}
+
+function buildMapProviderConfig(config: Pick<PipelineConfig, 'mapTimeoutMs' | 'mapModel' | 'mapCommand' | 'mapArgs'>): ProviderConfig | undefined {
+  const providerConfig: ProviderConfig = {}
+  if (config.mapTimeoutMs !== undefined) providerConfig.timeoutMs = config.mapTimeoutMs
+  if (config.mapModel !== undefined) providerConfig.model = config.mapModel
+  if (config.mapCommand !== undefined) providerConfig.command = config.mapCommand
+  if (config.mapArgs !== undefined) providerConfig.args = config.mapArgs
+  return Object.keys(providerConfig).length > 0 ? providerConfig : undefined
 }
 
 /** Find the default config file (config.yaml > repos.json). */
@@ -166,6 +187,8 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       'test-command': { type: 'string' },
       model: { type: 'string' },
       timeout: { type: 'string' },
+      'map-command': { type: 'string' },
+      'map-arg': { type: 'string', multiple: true },
       'merge-method': { type: 'string' },
       poll: { type: 'string' },
       tui: { type: 'boolean', default: false },
@@ -192,6 +215,8 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       'test-command',
       'model',
       'timeout',
+      'map-command',
+      'map-arg',
       'merge-method',
     ] as const
     const combined = blockedFlags.filter((flag) => values[flag] !== undefined && values[flag] !== false)
@@ -219,19 +244,16 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       : { repos: [] }
     const github = new GitHubClient(token)
     const state = new StateManager('.pipeline-state.json', guiConfig.retry)
-    const mapProviderConfig = {
-      ...(guiConfig.mapTimeoutMs !== undefined ? { timeoutMs: guiConfig.mapTimeoutMs } : {}),
-      ...(guiConfig.mapModel !== undefined ? { model: guiConfig.mapModel } : {}),
-    }
-    const ai = new MAPWrapper(Object.keys(mapProviderConfig).length > 0 ? mapProviderConfig : undefined)
+    const mapProviderConfig = buildMapProviderConfig(guiConfig)
+    const ai = new MAPWrapper(mapProviderConfig)
     const processor = new IssueProcessor(github, ai, new GitOperations(), state, new SpecCache())
     const explicitRunner = new ExplicitIssueRunner(github, processor)
-    const mapAvailable = MAPWrapper.detect().available
+    const mapAvailable = MAPWrapper.detect(mapProviderConfig).available
     const workspace = createIssueWorkspace({
       github,
       configRepos: guiConfig.repos,
       state,
-      ...(mapAvailable ? { polishText: (title: string, body: string) => polishIssueText(title, body) } : {}),
+      ...(mapAvailable ? { polishText: (title: string, body: string, options) => polishIssueText(title, body, options, mapProviderConfig) } : {}),
       explicitRunner,
     })
     const { runGui } = await import('./gui/main.js')
@@ -262,21 +284,22 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
       return 1
     }
 
-    let configRepos: RepoConfig[] = []
+    let tuiConfig: PipelineConfig = { repos: [] }
     const tuiConfigPath = findDefaultConfig()
     if (tuiConfigPath !== undefined && existsSync(tuiConfigPath)) {
-      configRepos = loadConfig(tuiConfigPath).repos
+      tuiConfig = loadConfig(tuiConfigPath)
     }
 
     const github = new GitHubClient(token)
-    const mapAvailable = MAPWrapper.detect().available
+    const mapProviderConfig = buildMapProviderConfig(tuiConfig)
+    const mapAvailable = MAPWrapper.detect(mapProviderConfig).available
     const tuiState = new StateManager('.pipeline-state.json')
     const { runTui } = await import('./cli/tui.js')
     return runTui(createIssueWorkspace({
       github,
-      configRepos,
+      configRepos: tuiConfig.repos,
       state: tuiState,
-      ...(mapAvailable ? { polishText: (t: string, b: string) => polishIssueText(t, b) } : {}),
+      ...(mapAvailable ? { polishText: (t: string, b: string, options) => polishIssueText(t, b, options, mapProviderConfig) } : {}),
     }))
   }
 
@@ -330,14 +353,11 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<numbe
   const github = new GitHubClient(token)
 
   // Build MAP provider with config overrides
-  const mapProviderConfig = {
-    ...(config.mapTimeoutMs !== undefined ? { timeoutMs: config.mapTimeoutMs } : {}),
-    ...(config.mapModel !== undefined ? { model: config.mapModel } : {}),
-  }
-  const ai = new MAPWrapper(Object.keys(mapProviderConfig).length > 0 ? mapProviderConfig : undefined)
+  const mapProviderConfig = buildMapProviderConfig(config)
+  const ai = new MAPWrapper(mapProviderConfig)
 
   // Auto-detect MAP binary
-  const detection = MAPWrapper.detect()
+  const detection = MAPWrapper.detect(mapProviderConfig)
   if (detection.available) {
     console.log(`[MAP] Detected: ${detection.version ?? 'unknown version'}`)
   } else {

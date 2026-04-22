@@ -21,6 +21,8 @@ const PipelineConfigSchema = z.object({
   maxIssuesPerRun: z.number().int().positive().default(10),
   mapModel: z.string().optional(),
   mapTimeoutMs: z.number().int().positive().optional(),
+  mapCommand: z.string().min(1).optional(),
+  mapArgs: z.array(z.string()).optional(),
   retry: RetryConfigSchema.optional(),
   mergeCommentTrigger: z.string().default('/merge'),
   mergeMethod: z.enum(['merge', 'squash', 'rebase']).default('merge'),
@@ -51,6 +53,14 @@ function toTyped(parsed: ZodParsed): PipelineConfig {
 
   if (parsed.mapTimeoutMs !== undefined) {
     config.mapTimeoutMs = parsed.mapTimeoutMs
+  }
+
+  if (parsed.mapCommand !== undefined) {
+    config.mapCommand = parsed.mapCommand
+  }
+
+  if (parsed.mapArgs !== undefined) {
+    config.mapArgs = parsed.mapArgs
   }
 
   if (parsed.retry !== undefined) {

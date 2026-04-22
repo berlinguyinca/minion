@@ -7,6 +7,13 @@ describe('createIssueWorkspace', () => {
       listUserRepos: vi.fn().mockResolvedValue([{ owner: 'acme', name: 'api', pushedAt: '2026-01-01T00:00:00Z' }]),
       fetchLabels: vi.fn().mockResolvedValue(['bug']),
       fetchOpenIssues: vi.fn().mockResolvedValue([{ number: 1, title: 'Bug', labels: ['bug'] }]),
+      fetchOpenIssuesPage: vi.fn().mockResolvedValue({
+        issues: [{ number: 1, title: 'Bug', labels: ['bug'] }],
+        hasNextPage: false,
+        page: 1,
+        perPage: 25,
+        etag: '"etag"',
+      }),
       fetchIssueDetail: vi.fn().mockResolvedValue({ number: 1, title: 'Bug', body: 'Body', url: 'u', labels: [] }),
       createIssue: vi.fn().mockResolvedValue({ number: 2, url: 'new' }),
       updateIssue: vi.fn().mockResolvedValue(undefined),
@@ -30,6 +37,13 @@ describe('createIssueWorkspace', () => {
     await expect(workspace.listUserRepos()).resolves.toHaveLength(1)
     await expect(workspace.fetchLabels('acme', 'api')).resolves.toEqual(['bug'])
     await expect(workspace.fetchOpenIssues('acme', 'api')).resolves.toEqual([{ number: 1, title: 'Bug', labels: ['bug'] }])
+    await expect(workspace.fetchOpenIssuesPage('acme', 'api', { page: 1, perPage: 25 })).resolves.toEqual({
+      issues: [{ number: 1, title: 'Bug', labels: ['bug'] }],
+      hasNextPage: false,
+      page: 1,
+      perPage: 25,
+      etag: '"etag"',
+    })
     await expect(workspace.fetchIssueDetail('acme', 'api', 1)).resolves.toEqual({ number: 1, title: 'Bug', body: 'Body', url: 'u', labels: [] })
     await workspace.createIssue('acme', 'api', 'T', 'B', ['bug'])
     await workspace.updateIssue('acme', 'api', 1, 'T', 'B')

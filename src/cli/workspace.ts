@@ -2,6 +2,7 @@ import type { GitHubClient } from '../github/client.js'
 import type { ProcessingResult, RepoConfig } from '../types/index.js'
 import type { ExplicitIssueRunner } from '../pipeline/explicit-runner.js'
 import type { TuiDeps } from './hooks/useDeps.js'
+import type { PolishedIssueText, PolishIssueTextOptions } from '../ai/polish.js'
 
 type InputMode = 'vim' | 'basic'
 
@@ -9,6 +10,7 @@ type WorkspaceGitHub = Pick<GitHubClient,
   | 'listUserRepos'
   | 'fetchLabels'
   | 'fetchOpenIssues'
+  | 'fetchOpenIssuesPage'
   | 'fetchIssueDetail'
   | 'createIssue'
   | 'updateIssue'
@@ -30,7 +32,7 @@ export interface CreateIssueWorkspaceOptions {
   github: WorkspaceGitHub
   configRepos: RepoConfig[]
   state: WorkspaceState
-  polishText?: (title: string, body: string) => Promise<{ title: string; body: string } | undefined>
+  polishText?: (title: string, body: string, options?: PolishIssueTextOptions) => Promise<PolishedIssueText | undefined>
   explicitRunner?: Pick<ExplicitIssueRunner, 'runIssue'>
 }
 
@@ -41,6 +43,17 @@ export function createIssueWorkspace(options: CreateIssueWorkspaceOptions): Issu
     fetchOpenIssues: async (owner, name) => {
       const issues = await options.github.fetchOpenIssues(owner, name)
       return issues.map((issue) => ({ number: issue.number, title: issue.title, labels: issue.labels }))
+    },
+    fetchOpenIssuesPage: async (owner, name, pageOptions) => {
+      const result = await options.github.fetchOpenIssuesPage(owner, name, pageOptions)
+      return {
+        issues: result.issues.map((issue) => ({ number: issue.number, title: issue.title, labels: issue.labels })),
+        hasNextPage: result.hasNextPage,
+        page: result.page,
+        perPage: result.perPage,
+        ...(result.etag !== undefined ? { etag: result.etag } : {}),
+        ...(result.notModified !== undefined ? { notModified: result.notModified } : {}),
+      }
     },
     fetchIssueDetail: (owner, name, number) => options.github.fetchIssueDetail(owner, name, number),
     createIssue: (owner, name, title, body, labels) => options.github.createIssue(owner, name, title, body, labels),

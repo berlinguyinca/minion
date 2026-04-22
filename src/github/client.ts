@@ -17,6 +17,15 @@ export interface PRResult {
   isDraft: boolean
 }
 
+export interface OpenIssuesPage {
+  issues: Issue[]
+  hasNextPage: boolean
+  page: number
+  perPage: number
+  etag?: string
+  notModified?: boolean
+}
+
 interface OctokitError extends Error {
   status?: number
 }
@@ -50,8 +59,7 @@ export class GitHubClient {
     this.octokit = new Octokit({ auth: t, ...(baseUrl !== undefined ? { baseUrl } : {}) })
   }
 
-  async fetchOpenIssues(owner: string, name: string): Promise<Issue[]> {
-    const allItems: Array<{
+  private mapIssueItems(owner: string, name: string, items: Array<{
       id: number
       number: number
       title: string
@@ -59,32 +67,8 @@ export class GitHubClient {
       html_url: string
       pull_request?: unknown
       labels: Array<string | { name?: string }>
-    }> = []
-
-    let page = 1
-    let hasNextPage = true
-
-    while (hasNextPage) {
-      try {
-        const response = await this.octokit.issues.listForRepo({
-          owner,
-          repo: name,
-          state: 'open',
-          per_page: 100,
-          page,
-        })
-
-        allItems.push(...response.data)
-
-        const linkHeader = (response.headers as Record<string, string | undefined>)['link']
-        hasNextPage = typeof linkHeader === 'string' && linkHeader.includes('rel="next"')
-        page++
-      } catch (err) {
-        wrapError(err, owner, name)
-      }
-    }
-
-    return allItems
+  }>): Issue[] {
+    return items
       .filter((item) => item.pull_request === undefined || item.pull_request === null)
       .map((item) => ({
         id: item.id,
@@ -98,6 +82,58 @@ export class GitHubClient {
           .map((l) => (typeof l === 'string' ? l : l.name ?? ''))
           .filter((n) => n !== ''),
       }))
+  }
+
+  async fetchOpenIssuesPage(owner: string, name: string, options: { page?: number; perPage?: number; etag?: string; signal?: AbortSignal } = {}): Promise<OpenIssuesPage> {
+    const page = options.page ?? 1
+    const perPage = options.perPage ?? 100
+    try {
+      const response = await this.octokit.issues.listForRepo({
+        owner,
+        repo: name,
+        state: 'open',
+        per_page: perPage,
+        page,
+        ...(options.etag !== undefined ? { headers: { 'If-None-Match': options.etag } } : {}),
+        ...(options.signal !== undefined ? { request: { signal: options.signal } } : {}),
+      })
+      const linkHeader = (response.headers as Record<string, string | undefined>)['link']
+      const etag = (response.headers as Record<string, string | undefined>)['etag']
+      return {
+        issues: this.mapIssueItems(owner, name, response.data),
+        hasNextPage: typeof linkHeader === 'string' && linkHeader.includes('rel="next"'),
+        page,
+        perPage,
+        ...(etag !== undefined ? { etag } : {}),
+      }
+    } catch (err) {
+      if (isOctokitError(err) && err.status === 304) {
+        return {
+          issues: [],
+          hasNextPage: false,
+          page,
+          perPage,
+          notModified: true,
+          ...(options.etag !== undefined ? { etag: options.etag } : {}),
+        }
+      }
+      wrapError(err, owner, name)
+    }
+  }
+
+  async fetchOpenIssues(owner: string, name: string): Promise<Issue[]> {
+    const allIssues: Issue[] = []
+    let page = 1
+    let hasNextPage = true
+
+    while (hasNextPage) {
+      const result = await this.fetchOpenIssuesPage(owner, name, { page, perPage: 100 })
+      allIssues.push(...result.issues)
+      hasNextPage = result.hasNextPage
+      page++
+    }
+
+    return allIssues
   }
 
   async createPullRequest(params: CreatePRParams): Promise<PRResult> {

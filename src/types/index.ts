@@ -24,6 +24,10 @@ export interface RepoConfig {
 export interface ProviderConfig {
   timeoutMs?: number;
   model?: string;
+  /** Executable used to launch MAP (defaults to "map"). */
+  command?: string;
+  /** Arguments prepended before generated MAP args, e.g. ["run", "map:dev", "--"] for npm. */
+  args?: string[];
   agents?: {
     spec?: { adapter: 'claude' | 'codex' | 'ollama' };
     review?: { adapter: 'claude' | 'codex' | 'ollama' };
@@ -41,6 +45,8 @@ export interface PipelineConfig {
   maxIssuesPerRun?: number;
   mapModel?: string;
   mapTimeoutMs?: number;
+  mapCommand?: string;
+  mapArgs?: string[];
   retry?: RetryConfig;
   mergeCommentTrigger?: string;
   mergeMethod?: 'merge' | 'squash' | 'rebase';

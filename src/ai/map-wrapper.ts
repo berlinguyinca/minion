@@ -63,9 +63,11 @@ export class MAPWrapper implements AIProvider {
    * Checks whether the `map` binary is available on PATH.
    * Returns an object with `available` and optional `version` and `hint`.
    */
-  static detect(): { available: boolean; version?: string; hint?: string } {
+  static detect(config?: Pick<ProviderConfig, 'command' | 'args'>): { available: boolean; version?: string; hint?: string } {
+    const command = config?.command ?? 'map'
+    const args = [...(config?.args ?? []), '--version']
     try {
-      const output = execFileSync('map', ['--version'], {
+      const output = execFileSync(command, args, {
         encoding: 'utf-8',
         timeout: 5000,
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -74,7 +76,9 @@ export class MAPWrapper implements AIProvider {
     } catch {
       return {
         available: false,
-        hint: 'Install multi-agent-pipeline: cd /path/to/multi-agent-pipeline && pnpm build && npm link',
+        hint: command === 'map'
+          ? 'Install multi-agent-pipeline: cd /path/to/multi-agent-pipeline && pnpm build && npm link'
+          : `Configured MAP command failed: ${command} ${args.join(' ')}`,
       }
     }
   }
@@ -91,7 +95,8 @@ export class MAPWrapper implements AIProvider {
     }
 
     const beforeMs = Date.now()
-    const args: string[] = ['--headless', '--output-dir', workingDir]
+    const command = this.config?.command ?? 'map'
+    const args: string[] = [...(this.config?.args ?? []), '--headless', '--output-dir', workingDir]
 
     const tempConfigPath = this.writeTempMapConfig(workingDir)
     if (tempConfigPath !== undefined) {
@@ -104,7 +109,7 @@ export class MAPWrapper implements AIProvider {
     const timeoutMs = this.config?.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS
 
     const { stdout } = await invokeProcess({
-      command: 'map',
+      command,
       args,
       cwd: workingDir,
       timeoutMs,
@@ -169,7 +174,7 @@ export class MAPWrapper implements AIProvider {
    * binary doesn't support --headless (no --version output or old version).
    */
   private checkVersion(): void {
-    const detection = MAPWrapper.detect()
+    const detection = MAPWrapper.detect(this.config)
     if (!detection.available) {
       // Will throw AIBinaryNotFoundError from invokeProcess anyway,
       // but log a hint for clarity.

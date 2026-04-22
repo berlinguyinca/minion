@@ -128,4 +128,65 @@ describe('polishIssueText', () => {
     expect(prompt).toContain('my title')
     expect(prompt).toContain('my body')
   })
+
+  it('can ask MAP to optimize a comment using issue context', async () => {
+    mockInvoke.mockResolvedValueOnce({
+      stdout: '{"comment":"Optimized comment"}\n',
+      stderr: '',
+    })
+
+    const result = await polishIssueText('Fix copy paste', 'Existing issue body', {
+      target: 'comment',
+      comment: 'pls fix',
+      repo: 'owner/repo',
+      issueNumber: 42,
+      comments: ['Maintainer asked for context'],
+    })
+
+    expect(result).toEqual({ title: 'Fix copy paste', body: 'Existing issue body', comment: 'Optimized comment' })
+    const opts = mockInvoke.mock.calls[0]?.[0] as InvokeProcessOptions
+    const prompt = opts.args[opts.args.length - 1] as string
+    expect(prompt).toContain('Target field: comment')
+    expect(prompt).toContain('Repository: owner/repo')
+    expect(prompt).toContain('Issue number: 42')
+    expect(prompt).toContain('Maintainer asked for context')
+    expect(prompt).toContain('explain what the user wants to do')
+  })
+
+  it('can ask MAP to optimize the issue description using draft context', async () => {
+    mockInvoke.mockResolvedValueOnce({
+      stdout: '{"title":"Clear title","body":"Clear description"}\n',
+      stderr: '',
+    })
+
+    const result = await polishIssueText('vague', 'rough notes', {
+      target: 'description',
+      comment: 'pending follow-up',
+    })
+
+    expect(result).toEqual({ title: 'Clear title', body: 'Clear description' })
+    const opts = mockInvoke.mock.calls[0]?.[0] as InvokeProcessOptions
+    const prompt = opts.args[opts.args.length - 1] as string
+    expect(prompt).toContain('Target field: description')
+    expect(prompt).toContain('Pending comment draft: "pending follow-up"')
+  })
+
+  it('uses configured MAP command args and timeout for polish invocations', async () => {
+    mockInvoke.mockResolvedValueOnce({
+      stdout: '{"title":"Clear","body":"Text"}\n',
+      stderr: '',
+    })
+
+    await polishIssueText('title', 'body', {}, {
+      command: 'npm',
+      args: ['run', 'map:dev', '--'],
+      timeoutMs: 12345,
+    })
+
+    const opts = mockInvoke.mock.calls[0]?.[0] as InvokeProcessOptions
+    expect(opts.command).toBe('npm')
+    expect(opts.args.slice(0, 3)).toEqual(['run', 'map:dev', '--'])
+    expect(opts.args).toContain('--headless')
+    expect(opts.timeoutMs).toBe(12345)
+  })
 })

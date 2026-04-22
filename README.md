@@ -108,6 +108,8 @@ Repository (CLI mode):
   --test-command <cmd>      Test command for the repo
   --model <model>           Model for MAP to use internally
   --timeout <ms>            MAP timeout in milliseconds (default: 1800000)
+  --map-command <cmd>       MAP executable to run (default: map)
+  --map-arg <arg>           Default MAP command arg; repeatable (use --map-arg=-- for separator)
   --merge-method <method>   merge|squash|rebase (default: merge)
 
 Config file mode:
@@ -176,6 +178,11 @@ maxIssuesPerRun: 10
 # MAP (multi-agent-pipeline) configuration
 # mapModel: claude-sonnet-4-5      # Model MAP uses internally (optional)
 # mapTimeoutMs: 1800000            # Timeout in milliseconds (default: 30 minutes)
+# mapCommand: npm                  # Executable for a local MAP dev branch (default: map)
+# mapArgs:                         # Args prepended before generated MAP args
+#   - run
+#   - map:dev
+#   - --
 
 # Retry configuration for failed issues
 retry:
@@ -207,6 +214,8 @@ maxConsecutiveFailures: 5         # stop after N consecutive failures (default: 
 | `maxIssuesPerRun` | number | `10` | Cap on issues processed per invocation |
 | `mapModel` | string | -- | Model for MAP to use internally |
 | `mapTimeoutMs` | number | `1800000` | MAP timeout in milliseconds (30 min) |
+| `mapCommand` | string | `map` | Executable used to launch MAP |
+| `mapArgs` | string[] | `[]` | Default args prepended before generated MAP args, useful for `npm run ... --` |
 | `retry.maxAttempts` | number | `3` | Max retries per failed issue |
 | `retry.backoffMinutes` | number | `60` | Minimum wait between retries |
 | `mergeCommentTrigger` | string | `/merge` | Comment text that triggers merge |
@@ -343,7 +352,7 @@ test/
 ## Troubleshooting
 
 **MAP binary not found**
-Install [multi-agent-pipeline](https://github.com/berlinguyinca/multi-agent-pipeline): `cd /path/to/multi-agent-pipeline && pnpm build && npm link`. The pipeline logs a warning if the `map` binary is missing.
+Install [multi-agent-pipeline](https://github.com/berlinguyinca/multi-agent-pipeline): `cd /path/to/multi-agent-pipeline && pnpm build && npm link`. The pipeline logs a warning if the configured MAP command is missing. To use a local development checkout instead of a linked `map` binary, set `mapCommand: npm` and `mapArgs: ["run", "map:dev", "--"]` (or the equivalent npm/pnpm script for that branch).
 
 **`GITHUB_TOKEN` missing or invalid**
 Set `GITHUB_TOKEN` to a token with `repo` scope. Tokens with only `public_repo` scope cannot push branches to private repositories. The pipeline surfaces HTTP 401/403 with a clear message.
